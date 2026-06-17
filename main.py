@@ -25,6 +25,7 @@ import sys
 import json
 import base64
 import threading
+import traceback
 import webbrowser
 from datetime import datetime
 
@@ -86,7 +87,7 @@ NETWORK_PRESETS = {
 }
 
 DEFAULT_CONFIG = {
-    "api_base_url": "https://test.infinitymetahub.com/api/v1/admin/withdrawals",
+    "api_base_url": "https://yourdomain.com/api/v1/admin/withdrawals",
     "auth_header": "",          # full header value, e.g. "Bearer xxxxxxxx"
     "network": "bsc",
     "rpc_url": NETWORK_PRESETS["bsc"]["default_rpc"],
@@ -357,3 +358,743 @@ class PassphraseDialog(simpledialog.Dialog):
 def ask_passphrase(parent, title="Enter Passphrase", confirm=False):
     dlg = PassphraseDialog(parent, title, confirm=confirm)
     return dlg.value
+
+
+# ----------------------------------------------------------------------
+#  Main application
+# ----------------------------------------------------------------------
+
+class App:
+    COLUMNS = ("id", "user_id", "gross_bh", "fee_bh", "net_bh", "net_usd",
+               "wallet", "status", "created_at")
+    HEADINGS = ("ID", "User", "Gross BH", "Fee BH", "Net BH", "Net USD",
+                "Wallet Address", "Status", "Created")
+
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title(f"{APP_TITLE} v{APP_VERSION}")
+        self.root.geometry("1180x680")
+
+        self.config_data = ConfigStore.load()
+        self.api = ApiClient(self.config_data["api_base_url"], self.config_data["auth_header"])
+
+        # Private key kept ONLY in memory for this run, never logged.
+        self.runtime_private_key = None
+
+        self.all_records = []
+        self.pending_records = []
+
+        self._build_ui()
+        self.refresh_all(silent=True)
+        self.refresh_pending(silent=True)
+
+    # ---------------- generic helpers ----------------
+
+    def ui(self, fn):
+        """Schedule fn to run on the Tk main thread."""
+        self.root.after(0, fn)
+
+    def run_bg(self, fn, on_done=None, on_error=None):
+        def wrapper():
+            try:
+                result = fn()
+                if on_done:
+                    self.ui(lambda: on_done(result))
+            except Exception as e:
+                if on_error:
+                    self.ui(lambda: on_error(e))
+                else:
+                    self.ui(lambda: messagebox.showerror("Error", str(e)))
+        threading.Thread(target=wrapper, daemon=True).start()
+
+    def get_private_key(self):
+        """Returns the private key to sign with, prompting for a passphrase
+        if it's stored encrypted on disk. MUST be called on the main thread
+        (it may open a dialog)."""
+        if self.runtime_private_key:
+            return self.runtime_private_key
+        if self.config_data.get("pk_set"):
+            passphrase = ask_passphrase(self.root, "Unlock Wallet Key")
+            if not passphrase:
+                raise ChainError("Passphrase required to unlock the wallet key.")
+            try:
+                pk = decrypt_secret(self.config_data["pk_salt"], self.config_data["pk_token"], passphrase)
+            except Exception:
+                raise ChainError("Incorrect passphrase, or the saved key is corrupted.")
+            self.runtime_private_key = pk
+            return pk
+        raise ChainError("No wallet private key is configured. Go to the Settings tab.")
+
+    # ---------------- UI construction ----------------
+
+    def _build_ui(self):
+        nb = ttk.Notebook(self.root)
+        nb.pack(fill="both", expand=True)
+
+        self.tab_all = ttk.Frame(nb)
+        self.tab_pending = ttk.Frame(nb)
+        self.tab_settings = ttk.Frame(nb)
+
+        nb.add(self.tab_all, text="All Withdrawals")
+        nb.add(self.tab_pending, text="Pending")
+        nb.add(self.tab_settings, text="Wallet & API Settings")
+
+        self._build_all_tab(self.tab_all)
+        self._build_pending_tab(self.tab_pending)
+        self._build_settings_tab(self.tab_settings)
+
+    def _make_tree(self, parent, selectmode="browse"):
+        wrap = ttk.Frame(parent)
+        tree = ttk.Treeview(wrap, columns=self.COLUMNS, show="headings",
+                             selectmode=selectmode, height=16)
+        for col, head in zip(self.COLUMNS, self.HEADINGS):
+            tree.heading(col, text=head)
+            width = 70 if col == "id" else (260 if col == "wallet" else 110)
+            tree.column(col, width=width, anchor="w")
+        vsb = ttk.Scrollbar(wrap, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        wrap.grid_rowconfigure(0, weight=1)
+        wrap.grid_columnconfigure(0, weight=1)
+        return wrap, tree
+
+    @staticmethod
+    def _row_values(rec):
+        return (
+            rec.get("id"),
+            rec.get("user_id"),
+            fmt(rec.get("gross_amount_bh", 0)),
+            fmt(rec.get("platform_fee_bh", 0)),
+            fmt(rec.get("net_amount_bh", 0)),
+            fmt_usd(rec.get("net_amount_usd", 0)),
+            rec.get("wallet_address"),
+            rec.get("status"),
+            (rec.get("created_at") or "")[:19],
+        )
+
+    # ---------- Tab 1: All Withdrawals ----------
+
+    def _build_all_tab(self, parent):
+        top = ttk.Frame(parent, padding=8)
+        top.pack(fill="x")
+
+        ttk.Label(top, text="Filter status:").pack(side="left")
+        self.all_status_var = tk.StringVar(value="all")
+        cb = ttk.Combobox(top, textvariable=self.all_status_var, state="readonly",
+                           values=["all", "pending", "approved", "rejected"], width=12)
+        cb.pack(side="left", padx=6)
+        cb.bind("<<ComboboxSelected>>", lambda e: self.refresh_all())
+
+        ttk.Button(top, text="Refresh", command=self.refresh_all).pack(side="left", padx=6)
+        ttk.Button(top, text="View Details", command=self.show_details_all).pack(side="left", padx=6)
+
+        self.all_stats_label = ttk.Label(top, text="Stats: loading...")
+        self.all_stats_label.pack(side="left", padx=20)
+
+        wrap, self.all_tree = self._make_tree(parent, selectmode="browse")
+        wrap.pack(fill="both", expand=True, padx=8, pady=4)
+
+    def refresh_all(self, silent=False):
+        status = getattr(self, "all_status_var", None)
+        status_val = status.get() if status else "all"
+        self._set_client()
+
+        def work():
+            records = self.api.list_withdrawals(status=status_val, per_page=500)
+            stats = None
+            try:
+                stats = self.api.get_stats()
+            except ApiError:
+                pass
+            return records, stats
+
+        def done(result):
+            records, stats = result
+            self.all_records = records
+            for row in self.all_tree.get_children():
+                self.all_tree.delete(row)
+            for rec in records:
+                self.all_tree.insert("", "end", iid=str(rec.get("id")), values=self._row_values(rec))
+            if stats:
+                self.all_stats_label.config(text=(
+                    f"Total: {stats.get('total_requests', 0)}  |  "
+                    f"Pending: {stats.get('pending_count', 0)}  |  "
+                    f"Approved: {stats.get('approved_count', 0)}  |  "
+                    f"Rejected: {stats.get('rejected_count', 0)}  |  "
+                    f"Pending USD: {fmt_usd(stats.get('pending_usd', 0))}  |  "
+                    f"Paid USD: {fmt_usd(stats.get('total_paid_usd', 0))}"
+                ))
+
+        def err(e):
+            if not silent:
+                messagebox.showerror("Failed to load withdrawals", str(e))
+            self.all_stats_label.config(text="Stats: unavailable")
+
+        self.run_bg(work, on_done=done, on_error=err)
+
+    def show_details_all(self):
+        sel = self.all_tree.selection()
+        if not sel:
+            messagebox.showinfo("Select a row", "Select a withdrawal first.")
+            return
+        rec_id = sel[0]
+        rec = next((r for r in self.all_records if str(r.get("id")) == rec_id), None)
+        if not rec:
+            return
+        self._show_record_popup(rec)
+
+    def _show_record_popup(self, rec):
+        win = tk.Toplevel(self.root)
+        win.title(f"Withdrawal #{rec.get('id')}")
+        win.geometry("420x420")
+        text = tk.Text(win, wrap="word")
+        text.pack(fill="both", expand=True, padx=8, pady=8)
+        for k, v in rec.items():
+            text.insert("end", f"{k}: {v}\n")
+        text.config(state="disabled")
+
+    # ---------- Tab 2: Pending ----------
+
+    def _build_pending_tab(self, parent):
+        top = ttk.Frame(parent, padding=8)
+        top.pack(fill="x")
+
+        ttk.Button(top, text="Refresh", command=self.refresh_pending).pack(side="left", padx=4)
+        ttk.Button(top, text="Approve Selected", command=self.approve_selected).pack(side="left", padx=4)
+        ttk.Button(top, text="Reject Selected", command=self.reject_selected).pack(side="left", padx=4)
+        ttk.Button(top, text="Approve ALL Pending", command=self.approve_all).pack(side="left", padx=4)
+
+        self.pending_summary = ttk.Label(top, text="Pending: 0  |  Total BH: 0  |  Total USD: $0.00",
+                                          font=("TkDefaultFont", 10, "bold"))
+        self.pending_summary.pack(side="left", padx=20)
+
+        wrap, self.pending_tree = self._make_tree(parent, selectmode="extended")
+        wrap.pack(fill="both", expand=True, padx=8, pady=4)
+
+        log_frame = ttk.LabelFrame(parent, text="Activity Log")
+        log_frame.pack(fill="both", expand=False, padx=8, pady=(0, 8))
+        self.log_text = tk.Text(log_frame, height=10, wrap="word", state="disabled")
+        self.log_text.pack(fill="both", expand=True, padx=4, pady=4)
+        self.log_text.tag_configure("link", foreground="blue", underline=1)
+
+    def log(self, message, url=None):
+        def do():
+            self.log_text.config(state="normal")
+            ts = datetime.now().strftime("%H:%M:%S")
+            self.log_text.insert("end", f"[{ts}] {message}")
+            if url:
+                start = self.log_text.index("end-1c")
+                self.log_text.insert("end", f"  ({url})")
+                end = self.log_text.index("end-1c")
+                self.log_text.tag_add("link", start, end)
+                self.log_text.tag_bind("link", "<Button-1>", lambda e, u=url: webbrowser.open(u))
+            self.log_text.insert("end", "\n")
+            self.log_text.see("end")
+            self.log_text.config(state="disabled")
+        self.ui(do)
+
+    def refresh_pending(self, silent=False):
+        self._set_client()
+
+        def work():
+            return self.api.list_pending(per_page=500)
+
+        def done(records):
+            self.pending_records = records
+            for row in self.pending_tree.get_children():
+                self.pending_tree.delete(row)
+            total_bh = 0.0
+            total_usd = 0.0
+            for rec in records:
+                self.pending_tree.insert("", "end", iid=str(rec.get("id")), values=self._row_values(rec))
+                try:
+                    total_bh += float(rec.get("net_amount_bh", 0) or 0)
+                    total_usd += float(rec.get("net_amount_usd", 0) or 0)
+                except (TypeError, ValueError):
+                    pass
+            self.pending_summary.config(
+                text=f"Pending: {len(records)}  |  Total Net BH: {fmt(total_bh)}  |  Total Net USD: {fmt_usd(total_usd)}"
+            )
+
+        def err(e):
+            if not silent:
+                messagebox.showerror("Failed to load pending withdrawals", str(e))
+
+        self.run_bg(work, on_done=done, on_error=err)
+
+    # ---------- Settings ----------
+
+    def _build_settings_tab(self, parent):
+        outer = ttk.Frame(parent, padding=12)
+        outer.pack(fill="both", expand=True)
+
+        # --- API section ---
+        api_box = ttk.LabelFrame(outer, text="Backend API", padding=10)
+        api_box.pack(fill="x", pady=6)
+
+        ttk.Label(api_box, text="API Base URL").grid(row=0, column=0, sticky="w", pady=3)
+        self.var_api_base = tk.StringVar(value=self.config_data["api_base_url"])
+        ttk.Entry(api_box, textvariable=self.var_api_base, width=60).grid(row=0, column=1, sticky="w", pady=3)
+
+        ttk.Label(api_box, text="Authorization Header").grid(row=1, column=0, sticky="w", pady=3)
+        self.var_auth_header = tk.StringVar(value=self.config_data["auth_header"])
+        ttk.Entry(api_box, textvariable=self.var_auth_header, width=60, show="*").grid(row=1, column=1, sticky="w", pady=3)
+        ttk.Label(api_box, text="e.g. Bearer 1|abcde12345...", foreground="gray").grid(row=2, column=1, sticky="w")
+
+        ttk.Button(api_box, text="Test API Connection", command=self.test_api).grid(row=3, column=1, sticky="w", pady=6)
+
+        # --- Blockchain section ---
+        chain_box = ttk.LabelFrame(outer, text="Blockchain / Token", padding=10)
+        chain_box.pack(fill="x", pady=6)
+
+        ttk.Label(chain_box, text="Network").grid(row=0, column=0, sticky="w", pady=3)
+        self.var_network = tk.StringVar(value=self.config_data["network"])
+        net_cb = ttk.Combobox(chain_box, textvariable=self.var_network, state="readonly",
+                               values=list(NETWORK_PRESETS.keys()), width=15)
+        net_cb.grid(row=0, column=1, sticky="w", pady=3)
+        net_cb.bind("<<ComboboxSelected>>", self._on_network_change)
+
+        ttk.Label(chain_box, text="RPC URL").grid(row=1, column=0, sticky="w", pady=3)
+        self.var_rpc = tk.StringVar(value=self.config_data["rpc_url"])
+        ttk.Entry(chain_box, textvariable=self.var_rpc, width=60).grid(row=1, column=1, sticky="w", pady=3)
+
+        ttk.Label(chain_box, text="USDT Contract Address").grid(row=2, column=0, sticky="w", pady=3)
+        self.var_contract = tk.StringVar(value=self.config_data["usdt_contract"])
+        ttk.Entry(chain_box, textvariable=self.var_contract, width=60).grid(row=2, column=1, sticky="w", pady=3)
+
+        ttk.Label(chain_box, text="Token Decimals").grid(row=3, column=0, sticky="w", pady=3)
+        self.var_decimals = tk.IntVar(value=self.config_data["decimals"])
+        ttk.Spinbox(chain_box, from_=0, to=18, textvariable=self.var_decimals, width=6).grid(row=3, column=1, sticky="w", pady=3)
+
+        ttk.Label(chain_box, text="Amount to send per payout").grid(row=4, column=0, sticky="w", pady=3)
+        self.var_amount_source = tk.StringVar(value=self.config_data["amount_source"])
+        af = ttk.Frame(chain_box)
+        af.grid(row=4, column=1, sticky="w")
+        ttk.Radiobutton(af, text="net_amount_usd (USD value, in USDT)", variable=self.var_amount_source,
+                         value="usd").pack(anchor="w")
+        ttk.Radiobutton(af, text="net_amount_bh (BH amount)", variable=self.var_amount_source,
+                         value="bh").pack(anchor="w")
+
+        ttk.Button(chain_box, text="Test RPC Connection", command=self.test_rpc).grid(row=5, column=1, sticky="w", pady=6)
+
+        # --- Wallet section ---
+        wallet_box = ttk.LabelFrame(outer, text="Sending Wallet (hot wallet that pays customers)", padding=10)
+        wallet_box.pack(fill="x", pady=6)
+
+        warn = ("⚠ Whoever has this private key can move all funds in this wallet. "
+                "Only use a wallet funded with what you intend to pay out, on a machine you trust.")
+        ttk.Label(wallet_box, text=warn, foreground="#a13a00", wraplength=620, justify="left").grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+
+        ttk.Label(wallet_box, text="From Wallet Address").grid(row=1, column=0, sticky="w", pady=3)
+        self.var_from_addr = tk.StringVar(value=self.config_data["from_address"])
+        ttk.Entry(wallet_box, textvariable=self.var_from_addr, width=60).grid(row=1, column=1, sticky="w", pady=3)
+
+        ttk.Label(wallet_box, text="Private Key").grid(row=2, column=0, sticky="w", pady=3)
+        pk_frame = ttk.Frame(wallet_box)
+        pk_frame.grid(row=2, column=1, sticky="w", pady=3)
+        self.var_pk = tk.StringVar(value="")
+        self.pk_entry = ttk.Entry(pk_frame, textvariable=self.var_pk, width=50, show="*")
+        self.pk_entry.pack(side="left")
+        self.var_pk_show = tk.BooleanVar(value=False)
+
+        def toggle_pk():
+            self.pk_entry.config(show="" if self.var_pk_show.get() else "*")
+        ttk.Checkbutton(pk_frame, text="show", variable=self.var_pk_show, command=toggle_pk).pack(side="left", padx=4)
+
+        self.var_persist_key = tk.BooleanVar(value=self.config_data.get("pk_set", False))
+        ttk.Checkbutton(wallet_box, text="Remember this key on disk, encrypted with a passphrase",
+                         variable=self.var_persist_key).grid(row=3, column=1, sticky="w")
+
+        key_status = "saved (encrypted)" if self.config_data.get("pk_set") else "not saved"
+        self.pk_status_label = ttk.Label(wallet_box, text=f"Status: {key_status}", foreground="gray")
+        self.pk_status_label.grid(row=4, column=1, sticky="w")
+
+        btn_row = ttk.Frame(wallet_box)
+        btn_row.grid(row=5, column=1, sticky="w", pady=6)
+        ttk.Button(btn_row, text="Save Wallet Settings", command=self.save_wallet_settings).pack(side="left", padx=4)
+        ttk.Button(btn_row, text="Clear Saved Key", command=self.clear_saved_key).pack(side="left", padx=4)
+        ttk.Button(btn_row, text="Check Balances", command=self.check_balances).pack(side="left", padx=4)
+
+        # --- Safety section ---
+        safety_box = ttk.LabelFrame(outer, text="Safety", padding=10)
+        safety_box.pack(fill="x", pady=6)
+        self.var_simulate = tk.BooleanVar(value=self.config_data.get("simulate_only", True))
+        ttk.Checkbutton(
+            safety_box,
+            text="Simulation mode - do NOT broadcast real transactions (recommended for testing)",
+            variable=self.var_simulate
+        ).pack(anchor="w")
+
+        bottom = ttk.Frame(outer)
+        bottom.pack(fill="x", pady=10)
+        ttk.Button(bottom, text="Save All Settings", command=self.save_all_settings).pack(side="left", padx=4)
+        ttk.Button(bottom, text="Reset All Settings", command=self.reset_settings).pack(side="left", padx=4)
+
+    def _on_network_change(self, event=None):
+        net = self.var_network.get()
+        preset = NETWORK_PRESETS.get(net)
+        if not preset:
+            return
+        if not self.var_rpc.get() or self.var_rpc.get() in (p["default_rpc"] for p in NETWORK_PRESETS.values()):
+            self.var_rpc.set(preset["default_rpc"])
+        self.var_contract.set(preset["usdt_contract"])
+        self.var_decimals.set(preset["decimals"])
+
+    def _collect_settings_into_config(self):
+        self.config_data["api_base_url"] = self.var_api_base.get().strip()
+        self.config_data["auth_header"] = self.var_auth_header.get().strip()
+        self.config_data["network"] = self.var_network.get()
+        self.config_data["rpc_url"] = self.var_rpc.get().strip()
+        self.config_data["usdt_contract"] = self.var_contract.get().strip()
+        self.config_data["decimals"] = int(self.var_decimals.get())
+        self.config_data["amount_source"] = self.var_amount_source.get()
+        self.config_data["from_address"] = self.var_from_addr.get().strip()
+        self.config_data["simulate_only"] = bool(self.var_simulate.get())
+
+    def _set_client(self):
+        self.api = ApiClient(self.config_data["api_base_url"], self.config_data["auth_header"])
+
+    def save_all_settings(self):
+        self._collect_settings_into_config()
+        ConfigStore.save(self.config_data)
+        self._set_client()
+        messagebox.showinfo("Saved", "Settings saved.")
+
+    def save_wallet_settings(self):
+        self._collect_settings_into_config()
+        new_key = self.var_pk.get().strip()
+
+        if new_key:
+            if self.var_persist_key.get():
+                passphrase = ask_passphrase(self.root, "Set a passphrase to encrypt the key", confirm=True)
+                if not passphrase:
+                    messagebox.showwarning("Cancelled", "Key was not saved.")
+                    return
+                salt_b64, token = encrypt_secret(new_key, passphrase)
+                self.config_data["pk_set"] = True
+                self.config_data["pk_salt"] = salt_b64
+                self.config_data["pk_token"] = token
+                self.pk_status_label.config(text="Status: saved (encrypted)")
+            else:
+                self.config_data["pk_set"] = False
+                self.config_data["pk_salt"] = ""
+                self.config_data["pk_token"] = ""
+                self.pk_status_label.config(text="Status: kept in memory only (not saved to disk)")
+            self.runtime_private_key = new_key
+            self.var_pk.set("")  # clear from the visible widget
+
+        ConfigStore.save(self.config_data)
+        self._set_client()
+        messagebox.showinfo("Saved", "Wallet settings saved.")
+
+    def clear_saved_key(self):
+        if not messagebox.askyesno("Confirm", "Delete the saved encrypted private key from disk?"):
+            return
+        self.config_data["pk_set"] = False
+        self.config_data["pk_salt"] = ""
+        self.config_data["pk_token"] = ""
+        self.runtime_private_key = None
+        ConfigStore.save(self.config_data)
+        self.pk_status_label.config(text="Status: not saved")
+        messagebox.showinfo("Cleared", "Saved key removed.")
+
+    def reset_settings(self):
+        if not messagebox.askyesno("Confirm", "Reset ALL settings (including the saved wallet key) to defaults?"):
+            return
+        ConfigStore.delete()
+        self.config_data = dict(DEFAULT_CONFIG)
+        self.runtime_private_key = None
+        messagebox.showinfo("Reset", "Settings were reset. Please restart the app.")
+
+    def test_api(self):
+        self._collect_settings_into_config()
+        self._set_client()
+
+        def work():
+            return self.api.get_stats()
+
+        def done(stats):
+            messagebox.showinfo("API OK", f"Connected. Pending: {stats.get('pending_count', 0)}, "
+                                           f"Total: {stats.get('total_requests', 0)}")
+
+        def err(e):
+            messagebox.showerror("API Test Failed", str(e))
+
+        self.run_bg(work, on_done=done, on_error=err)
+
+    def test_rpc(self):
+        self._collect_settings_into_config()
+        rpc = self.config_data["rpc_url"]
+
+        def work():
+            chain = ChainClient(rpc)
+            return chain.w3.eth.chain_id
+
+        def done(chain_id):
+            messagebox.showinfo("RPC OK", f"Connected. Chain ID: {chain_id}")
+
+        def err(e):
+            messagebox.showerror("RPC Test Failed", str(e))
+
+        self.run_bg(work, on_done=done, on_error=err)
+
+    def check_balances(self):
+        self._collect_settings_into_config()
+        from_addr = self.config_data["from_address"]
+        if not from_addr:
+            messagebox.showwarning("Missing", "Enter the 'From Wallet Address' first.")
+            return
+        rpc = self.config_data["rpc_url"]
+        contract = self.config_data["usdt_contract"]
+        decimals = self.config_data["decimals"]
+        preset = NETWORK_PRESETS.get(self.config_data["network"], {})
+        symbol = preset.get("native_symbol", "native coin")
+
+        def work():
+            chain = ChainClient(rpc)
+            native = chain.native_balance(from_addr)
+            token = chain.token_balance(contract, from_addr, decimals)
+            return native, token
+
+        def done(result):
+            native, token = result
+            messagebox.showinfo(
+                "Balances",
+                f"{from_addr}\n\nUSDT balance: {fmt(token, 2)}\n{symbol} balance (for gas): {fmt(native, 6)}"
+            )
+
+        def err(e):
+            messagebox.showerror("Balance Check Failed", str(e))
+
+        self.run_bg(work, on_done=done, on_error=err)
+
+    # ---------- Approve / Reject actions ----------
+
+    def _selected_pending_records(self):
+        sel = self.pending_tree.selection()
+        recs = [r for r in self.pending_records if str(r.get("id")) in sel]
+        return recs
+
+    def reject_selected(self):
+        recs = self._selected_pending_records()
+        if not recs:
+            messagebox.showinfo("Select rows", "Select one or more pending withdrawals first.")
+            return
+        note = simpledialog.askstring("Reject", f"Reason for rejecting {len(recs)} withdrawal(s):", parent=self.root)
+        if not note:
+            messagebox.showwarning("Cancelled", "A rejection reason is required.")
+            return
+        self._set_client()
+
+        def work():
+            results = []
+            for rec in recs:
+                try:
+                    self.api.reject(rec["id"], note)
+                    results.append((rec["id"], True, None))
+                except ApiError as e:
+                    results.append((rec["id"], False, str(e)))
+            return results
+
+        def done(results):
+            for rid, ok, err_msg in results:
+                self.log(f"Reject #{rid}: {'OK' if ok else 'FAILED - ' + err_msg}")
+            self.refresh_pending()
+            self.refresh_all()
+
+        self.run_bg(work, on_done=done)
+
+    def approve_selected(self):
+        recs = self._selected_pending_records()
+        if not recs:
+            messagebox.showinfo("Select rows", "Select one or more pending withdrawals first.")
+            return
+        self._approve_batch(recs)
+
+    def approve_all(self):
+        if not self.pending_records:
+            messagebox.showinfo("Nothing to do", "There are no pending withdrawals loaded.")
+            return
+        self._approve_batch(list(self.pending_records))
+
+    def _approve_batch(self, recs):
+        self._collect_settings_into_config()
+        cfg = self.config_data
+
+        if not cfg["from_address"]:
+            messagebox.showwarning("Missing settings", "Configure the 'From Wallet Address' in Settings first.")
+            return
+
+        amount_field = "net_amount_usd" if cfg["amount_source"] == "usd" else "net_amount_bh"
+        total_amount = 0.0
+        for r in recs:
+            try:
+                total_amount += float(r.get(amount_field, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+
+        mode = "SIMULATION (no real funds will move)" if cfg["simulate_only"] else "LIVE - REAL FUNDS WILL BE SENT"
+        confirm = messagebox.askyesno(
+            "Confirm Approval",
+            f"Mode: {mode}\n\n"
+            f"You are about to approve {len(recs)} withdrawal(s).\n"
+            f"Total amount ({amount_field}): {fmt(total_amount, 2)}\n"
+            f"From wallet: {cfg['from_address']}\n\n"
+            "Each one will be sent on-chain to the customer's wallet_address "
+            "and then marked approved via the API. Continue?"
+        )
+        if not confirm:
+            return
+
+        # Must fetch/decrypt the private key on the MAIN thread (it may show a dialog).
+        if not cfg["simulate_only"]:
+            try:
+                private_key = self.get_private_key()
+            except ChainError as e:
+                messagebox.showerror("Wallet key required", str(e))
+                return
+        else:
+            private_key = None
+
+        self._set_client()
+        network = cfg["network"]
+        preset = NETWORK_PRESETS.get(network, {})
+        chain_id = preset.get("chain_id", 56)
+        explorer = preset.get("explorer_tx", "")
+        rpc_url = cfg["rpc_url"]
+        contract_address = cfg["usdt_contract"]
+        decimals = cfg["decimals"]
+        from_address = cfg["from_address"]
+        simulate = cfg["simulate_only"]
+
+        self.log(f"Starting approval of {len(recs)} withdrawal(s)... mode={'SIMULATE' if simulate else 'LIVE'}")
+
+        def work():
+            results = []
+            chain = None
+            nonce = None
+            if not simulate:
+                chain = ChainClient(rpc_url)
+                nonce = chain.next_nonce(from_address)
+
+            for rec in recs:
+                rid = rec.get("id")
+                to_addr = rec.get("wallet_address")
+                try:
+                    amount = float(rec.get(amount_field, 0) or 0)
+                    if amount <= 0:
+                        raise ChainError(f"Amount is zero/invalid ({amount_field}={amount})")
+
+                    if simulate:
+                        tx_hash = "SIMULATED-" + datetime.now().strftime("%Y%m%d%H%M%S%f")
+                        self.log(f"#{rid}: [SIMULATED] would send {fmt(amount, 2)} to {to_addr}")
+                    else:
+                        tx_hash = chain.send_token(
+                            private_key=private_key,
+                            from_address=from_address,
+                            to_address=to_addr,
+                            amount=amount,
+                            contract_address=contract_address,
+                            decimals=decimals,
+                            chain_id=chain_id,
+                            nonce=nonce,
+                        )
+                        nonce += 1
+                        url = (explorer + tx_hash) if explorer else None
+                        self.log(f"#{rid}: broadcast {fmt(amount, 2)} to {to_addr} -> tx {tx_hash}", url=url)
+
+                    self.api.approve(rid, tx_hash,
+                                      admin_note=f"Sent via admin tool ({'simulated' if simulate else network}). "
+                                                 f"Amount: {fmt(amount, 2)} ({amount_field}).")
+                    self.log(f"#{rid}: marked APPROVED in backend.")
+                    results.append((rid, True, tx_hash, None))
+
+                except (ChainError, ApiError, Exception) as e:
+                    self.log(f"#{rid}: FAILED - {e}")
+                    results.append((rid, False, None, str(e)))
+                    # If sending succeeded but the API call failed, the tx hash is
+                    # still in the log above so it can be confirmed manually.
+            return results
+
+        def done(results):
+            ok_count = sum(1 for r in results if r[1])
+            fail_count = len(results) - ok_count
+            self.log(f"Batch complete: {ok_count} succeeded, {fail_count} failed.")
+            self.refresh_pending()
+            self.refresh_all()
+            messagebox.showinfo("Batch complete", f"{ok_count} succeeded, {fail_count} failed. See Activity Log.")
+
+        def err(e):
+            self.log(f"Batch aborted: {e}")
+            messagebox.showerror("Batch failed", str(e))
+
+        self.run_bg(work, on_done=done, on_error=err)
+
+
+def main():
+    root = tk.Tk()
+
+    def report_callback_exception(exc, val, tb):
+        _show_fatal_error("".join(traceback.format_exception(exc, val, tb)))
+
+    root.report_callback_exception = report_callback_exception
+
+    try:
+        style = ttk.Style()
+        if "vista" in style.theme_names():
+            style.theme_use("vista")
+        elif "clam" in style.theme_names():
+            style.theme_use("clam")
+    except Exception:
+        pass
+    app = App(root)
+    root.mainloop()
+
+
+def _write_crash_log(text: str) -> str:
+    """Writes startup-failure details to a file. Returns the path, or '' if
+    that failed too (e.g. no write permission)."""
+    try:
+        log_dir = os.path.join(os.path.expanduser("~"), ".withdrawal_admin")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "crash.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"\n--- {datetime.now().isoformat()} ---\n{text}\n")
+        return log_path
+    except Exception:
+        return ""
+
+
+def _show_fatal_error(text: str):
+    """Surfaces a startup error in a way that works even when stdout/stderr
+    don't (e.g. a --noconsole build, or a console whose output isn't being
+    seen). Uses a native Win32 MessageBox via ctypes, which doesn't depend
+    on Python's stdio at all."""
+    log_path = _write_crash_log(text)
+    suffix = f"\n\nDetails were also saved to:\n{log_path}" if log_path else ""
+    shown = False
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0, text[:1500] + suffix, "WithdrawalAdmin - Startup Error", 0x10
+            )
+            shown = True
+        except Exception:
+            pass
+    if not shown:
+        try:
+            print(text, file=sys.stderr)
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException:
+        _show_fatal_error(traceback.format_exc())
