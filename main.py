@@ -86,7 +86,7 @@ NETWORK_PRESETS = {
 }
 
 DEFAULT_CONFIG = {
-    "api_base_url": "https://yourdomain.com/api/v1/admin/withdrawals",
+    "api_base_url": "https://test.infinitymetahub.com/api/v1/admin/withdrawals",
     "auth_header": "",          # full header value, e.g. "Bearer xxxxxxxx"
     "network": "bsc",
     "rpc_url": NETWORK_PRESETS["bsc"]["default_rpc"],
