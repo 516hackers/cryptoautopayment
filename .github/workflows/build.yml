@@ -30,7 +30,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --noconsole --name WithdrawalAdmin `
+          pyinstaller --onefile --name WithdrawalAdmin `
             --copy-metadata py_ecc `
             --copy-metadata web3 `
             --copy-metadata eth-account `
