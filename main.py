@@ -66,34 +66,46 @@ ERC20_ABI = [
 ]
 
 NETWORK_PRESETS = {
-    "bsc": {
-        "label": "BNB Smart Chain (BEP-20 USDT)",
-        "chain_id": 56,
-        "usdt_contract": "0x55d398326f99059fF775485246999027B3197955",
-        "decimals": 18,
-        "default_rpc": "https://bsc-mainnet.infura.io/v3/3eb6cf40e51349a19618c4b0c1b823a2",
-        "explorer_tx": "https://bscscan.com/tx/",
-        "native_symbol": "BNB",
+    "polygon_bh": {
+        "label": "Polygon — BH Token (net_amount_bh)",
+        "chain_id": 137,
+        "usdt_contract": "0x68a6EA8e9aB0824251061DD122aDA8493e62409d",  # BH token on Polygon
+        "decimals": 18,   # ← adjust if your BH token uses different decimals
+        "default_rpc": "https://polygon-rpc.com",
+        "explorer_tx": "https://polygonscan.com/tx/",
+        "native_symbol": "MATIC",
+        "amount_source": "bh",   # hint: use net_amount_bh for this network
     },
-    "polygon": {
-        "label": "Polygon (USDT)",
+    "polygon_usdt": {
+        "label": "Polygon — USDT (net_amount_usd)",
         "chain_id": 137,
         "usdt_contract": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
         "decimals": 6,
         "default_rpc": "https://polygon-rpc.com",
         "explorer_tx": "https://polygonscan.com/tx/",
         "native_symbol": "MATIC",
+        "amount_source": "usd",
+    },
+    "bsc_usdt": {
+        "label": "BNB Smart Chain — USDT (net_amount_usd)",
+        "chain_id": 56,
+        "usdt_contract": "0x55d398326f99059fF775485246999027B3197955",
+        "decimals": 18,
+        "default_rpc": "https://bsc-mainnet.infura.io/v3/3eb6cf40e51349a19618c4b0c1b823a2",
+        "explorer_tx": "https://bscscan.com/tx/",
+        "native_symbol": "BNB",
+        "amount_source": "usd",
     },
 }
 
 DEFAULT_CONFIG = {
     "api_base_url": "https://yourdomain.com/api/v1/admin/withdrawals",
     "auth_header": "",          # full header value, e.g. "Bearer xxxxxxxx"
-    "network": "bsc",
-    "rpc_url": NETWORK_PRESETS["bsc"]["default_rpc"],
-    "usdt_contract": NETWORK_PRESETS["bsc"]["usdt_contract"],
-    "decimals": NETWORK_PRESETS["bsc"]["decimals"],
-    "amount_source": "usd",     # "usd" -> net_amount_usd, "bh" -> net_amount_bh
+    "network": "polygon_bh",   # default: BH token on Polygon
+    "rpc_url": NETWORK_PRESETS["polygon_bh"]["default_rpc"],
+    "usdt_contract": NETWORK_PRESETS["polygon_bh"]["usdt_contract"],
+    "decimals": NETWORK_PRESETS["polygon_bh"]["decimals"],
+    "amount_source": "bh",     # "bh" -> net_amount_bh, "usd" -> net_amount_usd
     "from_address": "",
     "simulate_only": True,      # safety default: ON. Must be turned off to send real funds.
     "pk_set": False,
@@ -399,12 +411,13 @@ class App:
             try:
                 result = fn()
                 if on_done:
-                    self.ui(lambda: on_done(result))
+                    self.ui(lambda r=result: on_done(r))
             except Exception as e:
+                captured = e
                 if on_error:
-                    self.ui(lambda: on_error(e))
+                    self.ui(lambda err=captured: on_error(err))
                 else:
-                    self.ui(lambda: messagebox.showerror("Error", str(e)))
+                    self.ui(lambda err=captured: messagebox.showerror("Error", str(err)))
         threading.Thread(target=wrapper, daemon=True).start()
 
     def get_private_key(self):
@@ -565,6 +578,21 @@ class App:
         ttk.Button(top, text="Reject Selected", command=self.reject_selected).pack(side="left", padx=4)
         ttk.Button(top, text="Approve ALL Pending", command=self.approve_all).pack(side="left", padx=4)
 
+        self.pending_mode_label = tk.Label(top, text="", font=("TkDefaultFont", 9, "bold"), padx=8, pady=2)
+        self.pending_mode_label.pack(side="left", padx=10)
+
+        def _update_mode_label(*_):
+            if self.var_simulate.get():
+                self.pending_mode_label.config(text="🟡 SIMULATE", bg="#fff3cd", fg="#856404")
+            else:
+                self.pending_mode_label.config(text="🔴 LIVE", bg="#f8d7da", fg="#721c24")
+
+        # defer binding until var_simulate exists (it's created in _build_settings_tab)
+        self.root.after(100, lambda: (
+            self.var_simulate.trace_add("write", _update_mode_label),
+            _update_mode_label()
+        ))
+
         self.pending_summary = ttk.Label(top, text="Pending: 0  |  Total BH: 0  |  Total USD: $0.00",
                                           font=("TkDefaultFont", 10, "bold"))
         self.pending_summary.pack(side="left", padx=20)
@@ -651,9 +679,12 @@ class App:
         ttk.Label(chain_box, text="Network").grid(row=0, column=0, sticky="w", pady=3)
         self.var_network = tk.StringVar(value=self.config_data["network"])
         net_cb = ttk.Combobox(chain_box, textvariable=self.var_network, state="readonly",
-                               values=list(NETWORK_PRESETS.keys()), width=15)
+                               values=list(NETWORK_PRESETS.keys()), width=30)
         net_cb.grid(row=0, column=1, sticky="w", pady=3)
         net_cb.bind("<<ComboboxSelected>>", self._on_network_change)
+        # Show the human-readable label beside the key
+        self.net_label = ttk.Label(chain_box, text=NETWORK_PRESETS.get(self.config_data["network"], {}).get("label", ""), foreground="#005a9e")
+        self.net_label.grid(row=0, column=2, sticky="w", padx=8)
 
         ttk.Label(chain_box, text="RPC URL").grid(row=1, column=0, sticky="w", pady=3)
         self.var_rpc = tk.StringVar(value=self.config_data["rpc_url"])
@@ -718,14 +749,40 @@ class App:
         ttk.Button(btn_row, text="Check Balances", command=self.check_balances).pack(side="left", padx=4)
 
         # --- Safety section ---
-        safety_box = ttk.LabelFrame(outer, text="Safety", padding=10)
+        safety_box = ttk.LabelFrame(outer, text="⚠  LIVE / SIMULATION MODE", padding=10)
         safety_box.pack(fill="x", pady=6)
+
         self.var_simulate = tk.BooleanVar(value=self.config_data.get("simulate_only", True))
-        ttk.Checkbutton(
+
+        self.sim_banner = tk.Label(
             safety_box,
-            text="Simulation mode - do NOT broadcast real transactions (recommended for testing)",
-            variable=self.var_simulate
-        ).pack(anchor="w")
+            text="",
+            font=("TkDefaultFont", 11, "bold"),
+            anchor="center",
+            pady=6,
+        )
+        self.sim_banner.pack(fill="x")
+
+        def _update_sim_banner(*_):
+            if self.var_simulate.get():
+                self.sim_banner.config(
+                    text="🟡  SIMULATION MODE — no real transactions will be sent",
+                    bg="#fff3cd", fg="#856404"
+                )
+            else:
+                self.sim_banner.config(
+                    text="🔴  LIVE MODE — real funds WILL be sent on-chain",
+                    bg="#f8d7da", fg="#721c24"
+                )
+        self.var_simulate.trace_add("write", _update_sim_banner)
+        _update_sim_banner()
+
+        btn_row_sim = ttk.Frame(safety_box)
+        btn_row_sim.pack(pady=(6, 0))
+        ttk.Button(btn_row_sim, text="Enable SIMULATION mode (safe)",
+                   command=lambda: self.var_simulate.set(True)).pack(side="left", padx=6)
+        ttk.Button(btn_row_sim, text="Enable LIVE mode (sends real funds)",
+                   command=lambda: self._confirm_go_live()).pack(side="left", padx=6)
 
         bottom = ttk.Frame(outer)
         bottom.pack(fill="x", pady=10)
@@ -737,10 +794,14 @@ class App:
         preset = NETWORK_PRESETS.get(net)
         if not preset:
             return
-        if not self.var_rpc.get() or self.var_rpc.get() in (p["default_rpc"] for p in NETWORK_PRESETS.values()):
-            self.var_rpc.set(preset["default_rpc"])
+        self.var_rpc.set(preset["default_rpc"])
         self.var_contract.set(preset["usdt_contract"])
         self.var_decimals.set(preset["decimals"])
+        # Auto-select the recommended amount source for this network
+        if "amount_source" in preset:
+            self.var_amount_source.set(preset["amount_source"])
+        if hasattr(self, "net_label"):
+            self.net_label.config(text=preset.get("label", ""))
 
     def _collect_settings_into_config(self):
         self.config_data["api_base_url"] = self.var_api_base.get().strip()
@@ -752,6 +813,27 @@ class App:
         self.config_data["amount_source"] = self.var_amount_source.get()
         self.config_data["from_address"] = self.var_from_addr.get().strip()
         self.config_data["simulate_only"] = bool(self.var_simulate.get())
+
+    def _confirm_go_live(self):
+        if not messagebox.askyesno(
+            "Enable LIVE mode?",
+            "⚠ WARNING ⚠\n\n"
+            "LIVE mode will send REAL on-chain transactions from your wallet.\n"
+            "Real funds will move. This cannot be undone.\n\n"
+            "Are you sure you want to enable LIVE mode?",
+            icon="warning"
+        ):
+            return
+        if not messagebox.askyesno(
+            "Confirm LIVE mode",
+            "Second confirmation required.\n\n"
+            "You understand that clicking 'Approve' will broadcast\n"
+            "real token transfers from your configured wallet.\n\n"
+            "Enable LIVE mode — YES I am sure.",
+            icon="warning"
+        ):
+            return
+        self.var_simulate.set(False)
 
     def _set_client(self):
         self.api = ApiClient(self.config_data["api_base_url"], self.config_data["auth_header"])
