@@ -39,10 +39,51 @@ try:
 except ImportError:
     geth_poa_middleware = None
 
-APP_TITLE   = "Manual Withdrawal Admin"
-APP_VERSION = "1.1.0"
-CONFIG_DIR  = os.path.join(os.path.expanduser("~"), ".withdrawal_admin")
-CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+APP_TITLE    = "Manual Withdrawal Admin"
+APP_VERSION  = "1.2.0"
+APP_CREDIT   = "Developed By Ayamil Coders"
+CONFIG_DIR   = os.path.join(os.path.expanduser("~"), ".withdrawal_admin")
+CONFIG_PATH  = os.path.join(CONFIG_DIR, "config.json")
+
+# ── Known tokens to check on each network ────────────────────────────
+# The balance scanner will check every token in this list for the wallet.
+# Tokens with 0 balance are hidden unless SHOW_ZERO_BAL is True.
+SHOW_ZERO_BAL = False   # change to True to see all tokens even with 0 balance
+
+KNOWN_TOKENS = {
+    "polygon": {
+        "rpc":      "https://polygon-rpc.com",
+        "chain_id": 137,
+        "label":    "Polygon",
+        "native":   "MATIC",
+        "explorer": "https://polygonscan.com",
+        "tokens": [
+            {"symbol": "BH",   "address": "0x68a6EA8e9aB0824251061DD122aDA8493e62409d", "decimals": 18},
+            {"symbol": "USDT", "address": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", "decimals": 6},
+            {"symbol": "USDC", "address": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "decimals": 6},
+            {"symbol": "DAI",  "address": "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", "decimals": 18},
+            {"symbol": "WBTC", "address": "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", "decimals": 8},
+            {"symbol": "WETH", "address": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", "decimals": 18},
+            {"symbol": "WMATIC","address": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270","decimals": 18},
+        ],
+    },
+    "bsc": {
+        "rpc":      "https://bsc-dataseed.binance.org/",
+        "chain_id": 56,
+        "label":    "BNB Smart Chain",
+        "native":   "BNB",
+        "explorer": "https://bscscan.com",
+        "tokens": [
+            {"symbol": "USDT",  "address": "0x55d398326f99059fF775485246999027B3197955", "decimals": 18},
+            {"symbol": "USDC",  "address": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", "decimals": 18},
+            {"symbol": "BUSD",  "address": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", "decimals": 18},
+            {"symbol": "DAI",   "address": "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3", "decimals": 18},
+            {"symbol": "WBNB",  "address": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", "decimals": 18},
+            {"symbol": "ETH",   "address": "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", "decimals": 18},
+            {"symbol": "BTCB",  "address": "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c", "decimals": 18},
+        ],
+    },
+}
 
 # ── Minimal ERC-20 ABI ───────────────────────────────────────────────
 ERC20_ABI = [
@@ -416,9 +457,9 @@ WIDTHS = (55,110,100,90,100,100,260,80,140)
 class App:
     def __init__(self, root: tk.Tk):
         self.root    = root
-        self.root.title(f"{APP_TITLE}  v{APP_VERSION}")
-        self.root.geometry("1220x720")
-        self.root.minsize(900, 580)
+        self.root.title(f"{APP_TITLE}  v{APP_VERSION}  —  {APP_CREDIT}")
+        self.root.geometry("1260x740")
+        self.root.minsize(920, 580)
 
         self.cfg  = ConfigStore.load()
         self.api  = ApiClient(self.cfg["api_base_url"], self.cfg["auth_header"])
@@ -490,6 +531,16 @@ class App:
         self.nb.add(self.tab_pending,  text="  Pending  ")
         self.nb.add(self.tab_balances, text="  Wallet Balances  ")
         self.nb.add(self.tab_settings, text="  Wallet & API Settings  ")
+
+        # ── footer branding bar ──
+        footer = tk.Frame(self.root, bg="#1a237e", pady=3)
+        footer.pack(fill="x", side="bottom")
+        tk.Label(footer, text=f"  {APP_CREDIT}  •  {APP_TITLE} v{APP_VERSION}",
+                 bg="#1a237e", fg="#ffffff",
+                 font=("TkDefaultFont", 8)).pack(side="left")
+        tk.Label(footer, text="Simulation mode is ON by default — go to Settings to enable LIVE  ",
+                 bg="#1a237e", fg="#aab4e8",
+                 font=("TkDefaultFont", 8)).pack(side="right")
 
         self._build_all_tab()
         self._build_pending_tab()
@@ -904,42 +955,49 @@ class App:
                    command=self.refresh_balances).pack(side="left", padx=4)
         ttk.Button(bar, text="+ Add Token to Watch",
                    command=self._add_watch_token).pack(side="left", padx=4)
-        self.bal_status = ttk.Label(bar, text="", foreground="#555")
+        ttk.Button(bar, text="Show/Hide zero balances",
+                   command=self._toggle_zero_bal).pack(side="left", padx=4)
+
+        self.bal_status = ttk.Label(bar, text="Click 'Refresh' to load balances",
+                                    foreground="#555")
         self.bal_status.pack(side="left", padx=12)
 
         # ── wallet address display ──
-        addr_f = ttk.LabelFrame(p, text="Hot Wallet Address", padding=6)
+        addr_f = ttk.LabelFrame(p, text="Hot Wallet Address (same address checked on ALL networks)",
+                                padding=6)
         addr_f.pack(fill="x", padx=8, pady=(4, 0))
-        self.bal_addr_lbl = ttk.Label(addr_f, text=self.cfg.get("from_address") or "(not set)",
-                                      font=("Consolas", 10), foreground="#1a237e")
+        self.bal_addr_lbl = ttk.Label(
+            addr_f, text=self.cfg.get("from_address") or "(not set — set in Wallet & API Settings)",
+            font=("Consolas", 10), foreground="#1a237e")
         self.bal_addr_lbl.pack(anchor="w")
 
         # ── scrollable balance cards area ──
         cards_outer = ttk.Frame(p)
         cards_outer.pack(fill="both", expand=True, padx=8, pady=6)
 
-        canvas  = tk.Canvas(cards_outer, borderwidth=0, highlightthickness=0)
-        vsb     = ttk.Scrollbar(cards_outer, orient="vertical", command=canvas.yview)
-        self.bal_cards_inner = tk.Frame(canvas)
+        self.bal_canvas = tk.Canvas(cards_outer, borderwidth=0, highlightthickness=0)
+        vsb = ttk.Scrollbar(cards_outer, orient="vertical", command=self.bal_canvas.yview)
+        self.bal_cards_inner = tk.Frame(self.bal_canvas)
         self.bal_cards_inner.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            lambda e: self.bal_canvas.configure(scrollregion=self.bal_canvas.bbox("all"))
         )
-        canvas.create_window((0, 0), window=self.bal_cards_inner, anchor="nw")
-        canvas.configure(yscrollcommand=vsb.set)
-        canvas.pack(side="left", fill="both", expand=True)
+        self.bal_canvas.create_window((0, 0), window=self.bal_cards_inner, anchor="nw")
+        self.bal_canvas.configure(yscrollcommand=vsb.set)
+        self.bal_canvas.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
-        canvas.bind("<MouseWheel>",
-                    lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        self.bal_canvas.bind(
+            "<MouseWheel>",
+            lambda e: self.bal_canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
 
         # ── watched-token list panel ──
-        watch_f = ttk.LabelFrame(p, text="Watched Tokens (click row to remove)", padding=6)
+        watch_f = ttk.LabelFrame(p, text="Custom Watched Tokens", padding=6)
         watch_f.pack(fill="x", padx=8, pady=(0, 6))
 
         cols_w = ("symbol", "contract", "decimals", "network")
         self.watch_tree = ttk.Treeview(watch_f, columns=cols_w,
                                         show="headings", height=4)
-        for c, w in (("symbol",60),("contract",360),("decimals",70),("network",120)):
+        for c, w in (("symbol",70),("contract",380),("decimals",70),("network",130)):
             self.watch_tree.heading(c, text=c.title())
             self.watch_tree.column(c, width=w, anchor="w")
         wsb = ttk.Scrollbar(watch_f, orient="vertical", command=self.watch_tree.yview)
@@ -952,61 +1010,84 @@ class App:
                    command=self._remove_watch_token).grid(row=1, column=0, sticky="w", pady=4)
 
         self._reload_watch_tree()
+        # internal state for toggle
+        self._show_zero = SHOW_ZERO_BAL
+        self._last_bal_results: dict = {}   # network_key -> list of items
+
+    def _toggle_zero_bal(self):
+        self._show_zero = not self._show_zero
+        if self._last_bal_results:
+            self._render_all_network_cards(self._last_bal_results)
 
     def _reload_watch_tree(self):
         for row in self.watch_tree.get_children():
             self.watch_tree.delete(row)
         for t in self.cfg.get("extra_tokens", []):
             self.watch_tree.insert("", "end",
-                values=(t.get("symbol","?"), t.get("address",""), t.get("decimals",18), t.get("network","?")))
+                values=(t.get("symbol","?"), t.get("address",""),
+                        t.get("decimals",18), t.get("network","?")))
 
     def _add_watch_token(self):
-        addr = simpledialog.askstring(
-            "Add Token", "Enter the ERC-20 contract address to watch:", parent=self.root)
-        if not addr:
-            return
-        addr = addr.strip()
+        # Ask which network first
+        net_win = tk.Toplevel(self.root)
+        net_win.title("Add Watched Token")
+        net_win.grab_set()
+        net_win.geometry("420x220")
 
-        # try to auto-detect symbol/decimals from chain
-        rpc = self.cfg.get("rpc_url", "")
-        net = self.cfg.get("network", "polygon_bh")
+        ttk.Label(net_win, text="Network:").grid(row=0, column=0, sticky="w", padx=10, pady=8)
+        var_net = tk.StringVar(value="polygon")
+        net_cb  = ttk.Combobox(net_win, textvariable=var_net, state="readonly",
+                                values=list(KNOWN_TOKENS.keys()), width=20)
+        net_cb.grid(row=0, column=1, sticky="w", padx=10, pady=8)
 
-        def work():
-            if rpc:
+        ttk.Label(net_win, text="Contract Address:").grid(row=1, column=0, sticky="w", padx=10, pady=8)
+        var_addr = tk.StringVar()
+        ttk.Entry(net_win, textvariable=var_addr, width=42).grid(row=1, column=1, padx=10, pady=8)
+
+        def _confirm():
+            addr = var_addr.get().strip()
+            net  = var_net.get()
+            if not addr:
+                messagebox.showwarning("Required", "Enter a contract address.", parent=net_win)
+                return
+            net_win.destroy()
+            rpc = KNOWN_TOKENS.get(net, {}).get("rpc", self.cfg.get("rpc_url",""))
+
+            def work():
                 try:
-                    chain  = ChainClient(rpc)
+                    chain = ChainClient(rpc)
                     sym, dec = chain.token_info(addr)
                     return sym, dec
                 except Exception:
+                    return "???", 18
+
+            def done(res):
+                sym, dec = res
+                sym = simpledialog.askstring("Symbol",
+                    f"Token symbol (detected: {sym}):", initialvalue=sym, parent=self.root) or sym
+                try:
+                    dec = int(simpledialog.askstring("Decimals",
+                        f"Decimals (detected: {dec}):", initialvalue=str(dec), parent=self.root) or dec)
+                except Exception:
                     pass
-            return "???", 18
+                tokens = self.cfg.get("extra_tokens", [])
+                tokens.append({"address": addr, "symbol": sym, "decimals": dec, "network": net})
+                self.cfg["extra_tokens"] = tokens
+                ConfigStore.save(self.cfg)
+                self._reload_watch_tree()
+                messagebox.showinfo("Added", f"{sym} added to watchlist on {net}.")
 
-        def done(res):
-            sym, dec = res
-            sym = simpledialog.askstring("Symbol", f"Token symbol (detected: {sym}):",
-                                         initialvalue=sym, parent=self.root) or sym
-            try:
-                dec = int(simpledialog.askstring(
-                    "Decimals", f"Decimals (detected: {dec}):",
-                    initialvalue=str(dec), parent=self.root) or dec)
-            except Exception:
-                pass
+            self.run_bg(work, on_done=done)
 
-            tokens = self.cfg.get("extra_tokens", [])
-            tokens.append({"address": addr, "symbol": sym, "decimals": dec, "network": net})
-            self.cfg["extra_tokens"] = tokens
-            ConfigStore.save(self.cfg)
-            self._reload_watch_tree()
-            messagebox.showinfo("Added", f"{sym} added to watchlist.")
-
-        self.run_bg(work, on_done=done)
+        ttk.Button(net_win, text="Detect & Add", command=_confirm).grid(
+            row=2, column=1, sticky="w", padx=10, pady=12)
 
     def _remove_watch_token(self):
         sel = self.watch_tree.selection()
         if not sel:
             messagebox.showinfo("Select a row", "Select a token row to remove.")
             return
-        idx  = self.watch_tree.index(sel[0])
+        idx    = self.watch_tree.index(sel[0])
         tokens = self.cfg.get("extra_tokens", [])
         if 0 <= idx < len(tokens):
             removed = tokens.pop(idx)
@@ -1016,61 +1097,95 @@ class App:
             messagebox.showinfo("Removed", f"Removed {removed.get('symbol','token')}.")
 
     def refresh_balances(self):
-        wallet = self.cfg.get("from_address", "").strip()
-        self.bal_addr_lbl.config(text=wallet or "(not set)")
-
+        wallet = self.cfg.get("from_address","").strip()
+        self.bal_addr_lbl.config(text=wallet or "(not set — set in Wallet & API Settings)")
         if not wallet:
             messagebox.showwarning("No wallet", "Set 'From Wallet Address' in Settings first.")
             return
 
-        rpc      = self.cfg["rpc_url"]
-        preset   = NETWORK_PRESETS.get(self.cfg["network"], {})
-        native   = preset.get("native_symbol", "Coin")
-        contract = self.cfg["token_contract"]
-        decimals = self.cfg["decimals"]
-        extras   = list(self.cfg.get("extra_tokens", []))
+        extras = list(self.cfg.get("extra_tokens", []))
+        self.bal_status.config(text="⏳  Querying Polygon & BSC simultaneously…")
 
-        self.bal_status.config(text="Fetching…")
-
-        def work():
-            chain  = ChainClient(rpc)
-            cid    = chain.chain_id()
-            result = []
+        def _check_network(net_key: str, net_cfg: dict) -> tuple[str, list]:
+            """
+            Checks native + all known tokens + any extra watched tokens for this network.
+            Returns (net_key, list_of_items).  Runs in its own thread.
+            """
+            items = []
+            rpc = net_cfg["rpc"]
+            try:
+                chain = ChainClient(rpc)
+            except ChainError as e:
+                items.append({"symbol": net_cfg["native"], "balance": None,
+                               "error": str(e), "type": "native", "network": net_key})
+                return net_key, items
 
             # native coin
             try:
                 bal = chain.native_balance(wallet)
-                result.append({"symbol": native, "balance": bal,
-                                "contract": "native", "type": "native"})
+                items.append({"symbol": net_cfg["native"], "balance": bal,
+                               "contract": "native", "type": "native",
+                               "network": net_key})
             except Exception as e:
-                result.append({"symbol": native, "balance": None, "error": str(e), "type": "native"})
+                items.append({"symbol": net_cfg["native"], "balance": None,
+                               "error": str(e), "type": "native", "network": net_key})
 
-            # primary configured token
-            try:
-                sym, _ = chain.token_info(contract)
-                bal    = chain.token_balance(contract, wallet, decimals)
-                result.append({"symbol": sym, "balance": bal, "contract": contract,
-                                "type": "primary", "decimals": decimals})
-            except Exception as e:
-                result.append({"symbol": "PRIMARY TOKEN", "balance": None,
-                                "error": str(e), "contract": contract, "type": "primary"})
-
-            # watched extra tokens
-            for tok in extras:
+            # known tokens
+            for tok in net_cfg.get("tokens", []):
                 try:
                     bal = chain.token_balance(tok["address"], wallet, tok["decimals"])
-                    result.append({"symbol": tok["symbol"], "balance": bal,
-                                   "contract": tok["address"], "type": "extra",
-                                   "decimals": tok["decimals"]})
+                    items.append({"symbol": tok["symbol"], "balance": bal,
+                                   "contract": tok["address"], "decimals": tok["decimals"],
+                                   "type": "known", "network": net_key})
                 except Exception as e:
-                    result.append({"symbol": tok["symbol"], "balance": None,
-                                   "error": str(e), "contract": tok["address"], "type": "extra"})
-            return result, cid
+                    items.append({"symbol": tok["symbol"], "balance": None,
+                                   "error": str(e), "contract": tok["address"],
+                                   "type": "known", "network": net_key})
 
-        def done(res):
-            items, cid = res
-            self.bal_status.config(text=f"Chain ID {cid}  •  {datetime.now().strftime('%H:%M:%S')}")
-            self._render_balance_cards(items)
+            # user-added watched tokens that belong to this network
+            for tok in extras:
+                if tok.get("network") == net_key:
+                    try:
+                        bal = chain.token_balance(tok["address"], wallet, tok["decimals"])
+                        items.append({"symbol": tok["symbol"], "balance": bal,
+                                       "contract": tok["address"], "decimals": tok["decimals"],
+                                       "type": "extra", "network": net_key})
+                    except Exception as e:
+                        items.append({"symbol": tok["symbol"], "balance": None,
+                                       "error": str(e), "contract": tok["address"],
+                                       "type": "extra", "network": net_key})
+            return net_key, items
+
+        def work():
+            results: dict[str, list] = {}
+            threads = []
+            lock    = threading.Lock()
+
+            def run_net(k, cfg_n):
+                key, items = _check_network(k, cfg_n)
+                with lock:
+                    results[key] = items
+
+            for k, cfg_n in KNOWN_TOKENS.items():
+                t = threading.Thread(target=run_net, args=(k, cfg_n), daemon=True)
+                threads.append(t)
+                t.start()
+            for t in threads:
+                t.join(timeout=30)
+            return results
+
+        def done(results):
+            self._last_bal_results = results
+            total_nonzero = sum(
+                1 for items in results.values()
+                for it in items
+                if it.get("balance") and float(it["balance"]) > 0
+            )
+            self.bal_status.config(
+                text=f"✓  {total_nonzero} non-zero balance(s) found  •  "
+                     f"Last updated: {datetime.now().strftime('%H:%M:%S')}"
+            )
+            self._render_all_network_cards(results)
 
         def err(e):
             self.bal_status.config(text=f"Error: {e}")
@@ -1078,60 +1193,126 @@ class App:
 
         self.run_bg(work, on_done=done, on_error=err)
 
-    def _render_balance_cards(self, items: list):
-        # clear existing cards
+    def _render_all_network_cards(self, results: dict):
+        """Renders cards grouped by network, one section per network."""
         for w in self.bal_cards_inner.winfo_children():
             w.destroy()
 
-        explorer = NETWORK_PRESETS.get(self.cfg["network"], {}).get("explorer_tx", "")
+        NET_COLORS = {
+            "polygon": {"header_bg": "#7b1fa2", "header_fg": "#ffffff",
+                        "card_border": "#ce93d8", "explorer": "https://polygonscan.com"},
+            "bsc":     {"header_bg": "#f9a825", "header_fg": "#212121",
+                        "card_border": "#ffe082", "explorer": "https://bscscan.com"},
+        }
 
-        cols = 3  # cards per row — adjust to taste
-        for i, item in enumerate(items):
-            row, col = divmod(i, cols)
+        row_offset = 0
+        for net_key, items in results.items():
+            net_info  = KNOWN_TOKENS.get(net_key, {})
+            net_style = NET_COLORS.get(net_key, {"header_bg": "#37474f",
+                                                   "header_fg": "#fff",
+                                                   "card_border": "#90a4ae",
+                                                   "explorer": ""})
+            # filter zeros unless toggled on
+            visible = [it for it in items
+                       if self._show_zero
+                       or it.get("balance") is None        # always show errors
+                       or float(it.get("balance", 0)) > 0]
 
-            card = tk.Frame(self.bal_cards_inner, bd=1, relief="solid",
-                            padx=14, pady=12, bg="#ffffff")
-            card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
-            self.bal_cards_inner.columnconfigure(col, weight=1)
+            # ── network section header ────────────────────────────────
+            hdr = tk.Frame(self.bal_cards_inner, bg=net_style["header_bg"], pady=6)
+            hdr.grid(row=row_offset, column=0, columnspan=4,
+                     sticky="ew", padx=4, pady=(10, 2))
+            self.bal_cards_inner.columnconfigure(0, weight=1)
 
-            type_color = {"native": "#1565c0", "primary": "#2e7d32", "extra": "#6a1b9a"}
-            sym_color  = type_color.get(item.get("type","extra"), "#333")
+            count_nonzero = sum(1 for it in items
+                                if it.get("balance") and float(it["balance"]) > 0)
+            tk.Label(hdr,
+                     text=f"  {net_info.get('label', net_key)}   "
+                          f"({count_nonzero} token(s) with balance)",
+                     font=("TkDefaultFont", 11, "bold"),
+                     bg=net_style["header_bg"], fg=net_style["header_fg"]
+                     ).pack(side="left")
 
-            tk.Label(card, text=item.get("symbol","?"),
-                     font=("TkDefaultFont", 16, "bold"),
-                     fg=sym_color, bg="#ffffff").pack(anchor="w")
+            row_offset += 1
 
-            if item.get("balance") is not None:
-                bal = item["balance"]
-                if item.get("type") == "native":
-                    bal_str = f"{bal:.8f}"
+            if not visible:
+                tk.Label(self.bal_cards_inner,
+                         text="  No non-zero balances found on this network.",
+                         fg="#888", font=("TkDefaultFont", 9)
+                         ).grid(row=row_offset, column=0, columnspan=4,
+                                sticky="w", padx=12, pady=4)
+                row_offset += 1
+                continue
+
+            # ── token cards (3 per row) ───────────────────────────────
+            CARD_COLS = 3
+            for i, item in enumerate(visible):
+                card_row, card_col = divmod(i, CARD_COLS)
+                actual_row = row_offset + card_row
+                self.bal_cards_inner.columnconfigure(card_col, weight=1)
+
+                has_bal  = item.get("balance") is not None
+                is_zero  = has_bal and float(item["balance"]) == 0
+                type_tag = item.get("type", "known")
+
+                # card border colour by type
+                border_col = {
+                    "native": "#1565c0",
+                    "known":  net_style["card_border"],
+                    "extra":  "#6a1b9a",
+                }.get(type_tag, net_style["card_border"])
+
+                card_bg = "#f5f5f5" if is_zero else "#ffffff"
+                card = tk.Frame(self.bal_cards_inner, bd=2, relief="solid",
+                                padx=12, pady=10, bg=card_bg,
+                                highlightbackground=border_col,
+                                highlightthickness=2)
+                card.grid(row=actual_row, column=card_col,
+                          padx=6, pady=6, sticky="nsew")
+
+                sym_color = {"native": "#1565c0", "extra": "#6a1b9a"}.get(type_tag, "#212121")
+
+                # symbol
+                tk.Label(card, text=item.get("symbol","?"),
+                         font=("TkDefaultFont", 15, "bold"),
+                         fg=sym_color if not is_zero else "#aaa",
+                         bg=card_bg).pack(anchor="w")
+
+                # balance value
+                if has_bal:
+                    bal = float(item["balance"])
+                    bal_str = f"{bal:.8f}" if type_tag == "native" else f"{bal:,.6f}"
+                    bal_color = "#212121" if bal > 0 else "#aaa"
+                    tk.Label(card, text=bal_str,
+                             font=("Consolas", 13, "bold"),
+                             fg=bal_color, bg=card_bg).pack(anchor="w", pady=(3, 1))
                 else:
-                    bal_str = f"{bal:,.4f}"
-                tk.Label(card, text=bal_str,
-                         font=("Consolas", 14, "bold"),
-                         fg="#212121", bg="#ffffff").pack(anchor="w", pady=(4, 2))
-            else:
-                tk.Label(card, text=f"Error: {item.get('error','')}",
-                         font=("TkDefaultFont", 9), fg="#c62828",
-                         bg="#ffffff", wraplength=220, justify="left").pack(anchor="w", pady=4)
+                    tk.Label(card, text=f"⚠ {item.get('error','')}",
+                             font=("TkDefaultFont", 8), fg="#c62828",
+                             bg=card_bg, wraplength=200, justify="left").pack(anchor="w", pady=2)
 
-            contract = item.get("contract","")
-            if contract and contract != "native":
-                short = contract[:10] + "…" + contract[-6:]
-                lbl = tk.Label(card, text=short, font=("Consolas", 8),
-                               fg="#888", bg="#ffffff", cursor="hand2")
-                lbl.pack(anchor="w")
-                if explorer:
-                    url = f"https://polygonscan.com/token/{contract}"
-                    lbl.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
+                # contract address (clickable)
+                contract = item.get("contract","")
+                if contract and contract != "native":
+                    short = contract[:8] + "…" + contract[-5:]
+                    explorer = net_style.get("explorer","")
+                    lbl = tk.Label(card, text=short, font=("Consolas", 7),
+                                   fg="#888", bg=card_bg, cursor="hand2")
+                    lbl.pack(anchor="w")
+                    if explorer:
+                        url = f"{explorer}/token/{contract}"
+                        lbl.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
 
-            badge_text = {"native": "Gas coin", "primary": "Payout token", "extra": "Watched"}.get(
-                item.get("type","extra"), "")
-            if badge_text:
-                tk.Label(card, text=badge_text, font=("TkDefaultFont", 8),
-                         fg="#fff",
-                         bg=sym_color,
-                         padx=4, pady=1).pack(anchor="w", pady=(4, 0))
+                # badge
+                badge = {"native":"Gas coin","known":"Token","extra":"Watched"}.get(type_tag,"")
+                if badge:
+                    tk.Label(card, text=badge,
+                             font=("TkDefaultFont", 7, "bold"),
+                             fg="#fff", bg=border_col,
+                             padx=3, pady=1).pack(anchor="w", pady=(4,0))
+
+            # advance row offset by the number of card rows used
+            row_offset += (len(visible) + CARD_COLS - 1) // CARD_COLS + 1
 
     # ══════════════════════════════════════════════════════════════════
     #  TAB 4 — Wallet & API Settings  (scrollable)
