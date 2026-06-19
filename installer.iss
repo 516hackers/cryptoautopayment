@@ -22,10 +22,9 @@ AppUpdatesURL={#AppURL}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
-; Wizard banner BMP (164x314) and small BMP (55x58) are generated
-; from ayamil.jpg by the build pipeline (see build.yml).
+; Wizard images are generated from ayamil.jpg by build.yml:
+; ayamil_banner.bmp (164x314) and ayamil_small.bmp (55x58)
 WizardImageFile=ayamil_banner.bmp
-WizardImageStretch=yes
 WizardSmallImageFile=ayamil_small.bmp
 WizardStyle=modern
 OutputDir=dist_installer
