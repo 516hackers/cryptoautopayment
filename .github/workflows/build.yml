@@ -61,36 +61,57 @@ jobs:
       - name: Create installer output directory
         run: mkdir dist_installer
 
-      - name: Prepare wizard image (convert ayamil.jpg → ayamil.bmp via Python/Pillow)
+      - name: Prepare wizard images (ayamil.jpg → BMP)
         run: |
           python - << 'PYEOF'
           import sys
           from pathlib import Path
+          
           try:
               from PIL import Image
+              
               src = Path("ayamil.jpg")
               if src.exists():
+                  print(f"Converting {src}...")
                   img = Image.open(src).convert("RGB")
-                  # Inno Setup wizard image: 164x314 (tall banner, left side)
-                  # WizardSmallImageFile: 55x58
-                  # Resize to exactly 164x314 for the main banner
+                  
+                  # Inno Setup wizard banner: 164x314 (left side tall banner)
                   banner = img.resize((164, 314), Image.LANCZOS)
                   banner.save("ayamil_banner.bmp", format="BMP")
-                  # Small image 55x58
+                  print("✓ Created ayamil_banner.bmp (164x314)")
+                  
+                  # Inno Setup small image: 55x58 (top-right corner)
                   small = img.resize((55, 58), Image.LANCZOS)
                   small.save("ayamil_small.bmp", format="BMP")
-                  print("Converted ayamil.jpg -> ayamil_banner.bmp + ayamil_small.bmp")
+                  print("✓ Created ayamil_small.bmp (55x58)")
               else:
-                  raise FileNotFoundError("ayamil.jpg not found")
+                  raise FileNotFoundError(f"{src} not found in repo root")
+                  
           except Exception as e:
-              print(f"WARNING: Could not convert image: {e}")
-              print("Generating fallback solid-colour BMP placeholders...")
-              # Create minimal valid BMP placeholders (green brand colour)
-              from PIL import Image as PILImage
-              PILImage.new("RGB", (164, 314), color=(26, 126, 35)).save("ayamil_banner.bmp", "BMP")
-              PILImage.new("RGB", (55, 58),   color=(26, 126, 35)).save("ayamil_small.bmp",  "BMP")
-              print("Fallback BMPs created.")
+              print(f"ERROR: {e}", file=sys.stderr)
+              print("Creating fallback BMP placeholders (solid green)...", file=sys.stderr)
+              try:
+                  from PIL import Image
+                  # Fallback: solid green (matching brand colour from installer.iss: $00237E1A)
+                  Image.new("RGB", (164, 314), color=(26, 126, 35)).save("ayamil_banner.bmp", "BMP")
+                  Image.new("RGB", (55, 58), color=(26, 126, 35)).save("ayamil_small.bmp", "BMP")
+                  print("✓ Fallback BMPs created", file=sys.stderr)
+              except Exception as fallback_err:
+                  print(f"FATAL: Fallback also failed: {fallback_err}", file=sys.stderr)
+                  sys.exit(1)
           PYEOF
+
+      - name: Verify banner images were created
+        run: |
+          if (!(Test-Path "ayamil_banner.bmp")) {
+            Write-Error "ayamil_banner.bmp not found!"
+            exit 1
+          }
+          if (!(Test-Path "ayamil_small.bmp")) {
+            Write-Error "ayamil_small.bmp not found!"
+            exit 1
+          }
+          Write-Host "✓ Both banner images ready"
 
       - name: Build Installer with Inno Setup
         run: |
@@ -103,7 +124,7 @@ jobs:
           $installer = Get-ChildItem "dist_installer\*.exe" | Select-Object -First 1
           if (!$installer) { Write-Error "Installer not found!"; exit 1 }
           $size = $installer.Length / 1MB
-          Write-Host "Installer: $($installer.Name)  ($([math]::Round($size,1)) MB)"
+          Write-Host "✓ Installer: $($installer.Name) ($([math]::Round($size,1)) MB)"
 
       - name: Upload standalone EXE
         uses: actions/upload-artifact@v4
