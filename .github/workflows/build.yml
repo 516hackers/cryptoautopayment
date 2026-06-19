@@ -63,7 +63,7 @@ jobs:
 
       - name: Prepare wizard images (ayamil.jpg → BMP)
         run: |
-          python - << 'PYEOF'
+          $pythonScript = @"
           import sys
           from pathlib import Path
           
@@ -99,7 +99,9 @@ jobs:
               except Exception as fallback_err:
                   print(f"FATAL: Fallback also failed: {fallback_err}", file=sys.stderr)
                   sys.exit(1)
-          PYEOF
+          "@
+          
+          $pythonScript | python -
 
       - name: Verify banner images were created
         run: |
