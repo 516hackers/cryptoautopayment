@@ -11,7 +11,7 @@
 #define AppURL       "https://www.facebook.com/ayamilcoders"
 
 [Setup]
-AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}}
+AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} v{#AppVersion}
@@ -22,10 +22,14 @@ AppUpdatesURL={#AppURL}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
-; Wizard images are generated from ayamil.jpg by build.yml:
-; ayamil_banner.bmp (164x314) and ayamil_small.bmp (55x58)
+
+; Wizard images are generated from ayamil.jpg by build.yml
 WizardImageFile=ayamil_banner.bmp
 WizardSmallImageFile=ayamil_small.bmp
+
+; Application icon (favicon) - now properly set!
+SetupIconFile=imh.ico
+
 WizardStyle=modern
 OutputDir=dist_installer
 OutputBaseFilename=InfinityMetaHub_Setup_v{#AppVersion}
@@ -56,6 +60,8 @@ Source: "dist\InfinityMetaHub.exe"; DestDir: "{app}"; \
 Source: "ayamil.jpg"; DestDir: "{app}"; Flags: ignoreversion
 ; Favicon image
 Source: "imh.png"; DestDir: "{app}"; Flags: ignoreversion
+; ICO file (optional - for reference)
+Source: "imh.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}";                   Filename: "{app}\{#AppExeName}"
