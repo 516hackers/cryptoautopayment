@@ -55,8 +55,8 @@ jobs:
           $size = (Get-Item "dist\InfinityMetaHub.exe").length / 1MB
           Write-Host "EXE size: $([math]::Round($size,1)) MB"
 
-      - name: Install Inno Setup 6
-        run: choco install innosetup --version 6.3.3 -y --no-progress
+      - name: Install Inno Setup 6 (skips if already present)
+        run: choco install innosetup -y --no-progress --ignore-checksums
 
       - name: Create installer output directory
         run: mkdir dist_installer
