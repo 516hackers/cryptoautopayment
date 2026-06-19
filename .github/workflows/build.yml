@@ -7,6 +7,7 @@ on:
       - "main.py"
       - "requirements.txt"
       - "installer.iss"
+      - "imh.png"
       - ".github/workflows/build.yml"
   workflow_dispatch: {}
 
@@ -17,6 +18,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Verify required assets exist
+        run: |
+          foreach ($f in @("ayamil.jpg", "imh.png")) {
+            if (!(Test-Path $f)) {
+              Write-Error "Required asset '$f' not found in repo root!"
+              exit 1
+            }
+          }
+          Write-Host "All required assets found."
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
