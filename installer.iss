@@ -22,11 +22,11 @@ AppUpdatesURL={#AppURL}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
-; Use ayamil.jpg as the wizard banner (164x314 recommended).
-; Inno Setup 6 supports JPEG natively.
-WizardImageFile=ayamil.jpg
+; Wizard banner BMP (164x314) and small BMP (55x58) are generated
+; from ayamil.jpg by the build pipeline (see build.yml).
+WizardImageFile=ayamil_banner.bmp
 WizardImageStretch=yes
-WizardSmallImageFile=ayamil.jpg
+WizardSmallImageFile=ayamil_small.bmp
 WizardStyle=modern
 OutputDir=dist_installer
 OutputBaseFilename=InfinityMetaHub_Setup_v{#AppVersion}
@@ -45,7 +45,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
+Name: "desktopicon"; \
+  Description: "Create a &desktop shortcut"; \
+  GroupDescription: "Shortcuts:"
 
 [Files]
 ; Main executable
@@ -110,9 +112,9 @@ end;
 // ── Build wizard pages ────────────────────────────────────────────────
 procedure InitializeWizard;
 begin
-  // ───────────────────────────────────────────────────────────────�[...]
+  // ──────────────────────────────────────────────────────────────────
   // PAGE 1 — About Ayamil Coders
-  // ───────────────────────────────────────────────────────────────�[...]
+  // ──────────────────────────────────────────────────────────────────
   PageAbout := CreateCustomPage(
     wpWelcome,
     'Welcome to ' + '{#AppName}',
@@ -211,9 +213,9 @@ begin
     OnClick   := @OnInstagramClick;
   end;
 
-  // ───────────────────────────────────────────────────────────────�[...]
+  // ──────────────────────────────────────────────────────────────────
   // PAGE 2 — Wallet Setup
-  // ───────────────────────────────────────────────────────────────�[...]
+  // ──────────────────────────────────────────────────────────────────
   PageWallet := CreateCustomPage(
     PageAbout.ID,
     'Wallet Setup',
