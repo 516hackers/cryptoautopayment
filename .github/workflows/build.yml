@@ -27,7 +27,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller pillow
 
       - name: Build EXE with PyInstaller
         run: |
@@ -61,18 +61,36 @@ jobs:
       - name: Create installer output directory
         run: mkdir dist_installer
 
-      - name: Copy logo for installer (use placeholder if ayamil.jpg missing)
+      - name: Prepare wizard image (convert ayamil.jpg → ayamil.bmp via Python/Pillow)
         run: |
-          if (Test-Path "ayamil.jpg") {
-            Write-Host "ayamil.jpg found — using it for installer wizard image"
-          } else {
-            Write-Warning "ayamil.jpg not found in repo root. The installer will build without a custom wizard image."
-            # Remove the WizardImageFile lines so ISCC doesn't error
-            $iss = Get-Content installer.iss -Raw
-            $iss = $iss -replace 'WizardImageFile=.*\n', ''
-            $iss = $iss -replace 'WizardSmallImageFile=.*\n', ''
-            Set-Content installer.iss $iss
-          }
+          python - << 'PYEOF'
+          import sys
+          from pathlib import Path
+          try:
+              from PIL import Image
+              src = Path("ayamil.jpg")
+              if src.exists():
+                  img = Image.open(src).convert("RGB")
+                  # Inno Setup wizard image: 164x314 (tall banner, left side)
+                  # WizardSmallImageFile: 55x58
+                  # Resize to exactly 164x314 for the main banner
+                  banner = img.resize((164, 314), Image.LANCZOS)
+                  banner.save("ayamil_banner.bmp", format="BMP")
+                  # Small image 55x58
+                  small = img.resize((55, 58), Image.LANCZOS)
+                  small.save("ayamil_small.bmp", format="BMP")
+                  print("Converted ayamil.jpg -> ayamil_banner.bmp + ayamil_small.bmp")
+              else:
+                  raise FileNotFoundError("ayamil.jpg not found")
+          except Exception as e:
+              print(f"WARNING: Could not convert image: {e}")
+              print("Generating fallback solid-colour BMP placeholders...")
+              # Create minimal valid BMP placeholders (green brand colour)
+              from PIL import Image as PILImage
+              PILImage.new("RGB", (164, 314), color=(26, 126, 35)).save("ayamil_banner.bmp", "BMP")
+              PILImage.new("RGB", (55, 58),   color=(26, 126, 35)).save("ayamil_small.bmp",  "BMP")
+              print("Fallback BMPs created.")
+          PYEOF
 
       - name: Build Installer with Inno Setup
         run: |
