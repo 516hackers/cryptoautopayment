@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build — EXE + Installer
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
     paths:
       - "main.py"
       - "requirements.txt"
+      - "installer.iss"
       - ".github/workflows/build.yml"
   workflow_dispatch: {}
 
@@ -14,23 +15,23 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build EXE
+      - name: Build EXE with PyInstaller
         run: |
-          pyinstaller --onefile --name WithdrawalAdmin `
+          pyinstaller --onefile --name InfinityMetaHub `
             --copy-metadata py_ecc `
             --copy-metadata web3 `
             --copy-metadata eth-account `
@@ -45,8 +46,55 @@ jobs:
             --copy-metadata pycryptodome `
             main.py
 
-      - name: Upload artifact
+      - name: Verify EXE was created
+        run: |
+          if (!(Test-Path "dist\InfinityMetaHub.exe")) {
+            Write-Error "EXE not found!"
+            exit 1
+          }
+          $size = (Get-Item "dist\InfinityMetaHub.exe").length / 1MB
+          Write-Host "EXE size: $([math]::Round($size,1)) MB"
+
+      - name: Install Inno Setup 6
+        run: choco install innosetup --version 6.3.3 -y --no-progress
+
+      - name: Create installer output directory
+        run: mkdir dist_installer
+
+      - name: Copy logo for installer (use placeholder if ayamil.jpg missing)
+        run: |
+          if (Test-Path "ayamil.jpg") {
+            Write-Host "ayamil.jpg found — using it for installer wizard image"
+          } else {
+            Write-Warning "ayamil.jpg not found in repo root. The installer will build without a custom wizard image."
+            # Remove the WizardImageFile lines so ISCC doesn't error
+            $iss = Get-Content installer.iss -Raw
+            $iss = $iss -replace 'WizardImageFile=.*\n', ''
+            $iss = $iss -replace 'WizardSmallImageFile=.*\n', ''
+            Set-Content installer.iss $iss
+          }
+
+      - name: Build Installer with Inno Setup
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify installer was created
+        run: |
+          $installer = Get-ChildItem "dist_installer\*.exe" | Select-Object -First 1
+          if (!$installer) { Write-Error "Installer not found!"; exit 1 }
+          $size = $installer.Length / 1MB
+          Write-Host "Installer: $($installer.Name)  ($([math]::Round($size,1)) MB)"
+
+      - name: Upload standalone EXE
         uses: actions/upload-artifact@v4
         with:
-          name: WithdrawalAdmin-windows
-          path: dist/WithdrawalAdmin.exe
+          name: InfinityMetaHub-EXE-only
+          path: dist\InfinityMetaHub.exe
+
+      - name: Upload Windows Installer (Setup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: InfinityMetaHub-Setup-Installer
+          path: dist_installer\*.exe
