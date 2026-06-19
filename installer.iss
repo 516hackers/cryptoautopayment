@@ -11,7 +11,7 @@
 #define AppURL       "https://www.facebook.com/ayamilcoders"
 
 [Setup]
-AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} v{#AppVersion}
@@ -45,10 +45,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; \
-  Description: "Create a &desktop shortcut"; \
-  GroupDescription: "Shortcuts:"; \
-  Flags: checked
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
 
 [Files]
 ; Main executable
@@ -113,9 +110,9 @@ end;
 // ── Build wizard pages ────────────────────────────────────────────────
 procedure InitializeWizard;
 begin
-  // ──────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────�[...]
   // PAGE 1 — About Ayamil Coders
-  // ──────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────�[...]
   PageAbout := CreateCustomPage(
     wpWelcome,
     'Welcome to ' + '{#AppName}',
@@ -214,9 +211,9 @@ begin
     OnClick   := @OnInstagramClick;
   end;
 
-  // ──────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────�[...]
   // PAGE 2 — Wallet Setup
-  // ──────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────�[...]
   PageWallet := CreateCustomPage(
     PageAbout.ID,
     'Wallet Setup',
