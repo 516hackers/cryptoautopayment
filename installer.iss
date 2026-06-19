@@ -54,6 +54,8 @@ Source: "dist\InfinityMetaHub.exe"; DestDir: "{app}"; \
   Flags: ignoreversion; DestName: "{#AppExeName}"
 ; Logo image (shown in the app folder too)
 Source: "ayamil.jpg"; DestDir: "{app}"; Flags: ignoreversion
+; Favicon image
+Source: "imh.png"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}";                   Filename: "{app}\{#AppExeName}"
