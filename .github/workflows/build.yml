@@ -66,41 +66,54 @@ jobs:
           $pythonScript = @"
           import sys
           from pathlib import Path
-          
+
           try:
               from PIL import Image
-              
+
               src = Path("ayamil.jpg")
-              if src.exists():
-                  print(f"Converting {src}...")
-                  img = Image.open(src).convert("RGB")
-                  
-                  # Inno Setup wizard banner: 164x314 (left side tall banner)
-                  banner = img.resize((164, 314), Image.LANCZOS)
-                  banner.save("ayamil_banner.bmp", format="BMP")
-                  print("✓ Created ayamil_banner.bmp (164x314)")
-                  
-                  # Inno Setup small image: 55x58 (top-right corner)
-                  small = img.resize((55, 58), Image.LANCZOS)
-                  small.save("ayamil_small.bmp", format="BMP")
-                  print("✓ Created ayamil_small.bmp (55x58)")
-              else:
+              if not src.exists():
                   raise FileNotFoundError(f"{src} not found in repo root")
-                  
+
+              print(f"Opening {src}...")
+              img = Image.open(src).convert("RGBA")
+              print(f"  Source: {img.size[0]}x{img.size[1]} {img.mode}")
+
+              # Brand blue matching the Ayamil Coders logo background
+              BG_BLUE = (30, 90, 200)
+
+              # ── Banner: 164x314 (Inno Setup left-panel wizard image) ──────────
+              W, H = 164, 314
+              banner = Image.new("RGB", (W, H), BG_BLUE)
+              logo_w = W - 10          # 5px padding each side
+              logo_h = logo_w          # keep square aspect ratio
+              logo_top = (H - logo_h) // 2
+              logo_resized = img.resize((logo_w, logo_h), Image.LANCZOS)
+              banner.paste(logo_resized, (5, logo_top), logo_resized)
+              banner.save("ayamil_banner.bmp", format="BMP")
+              print(f"  Created ayamil_banner.bmp (164x314) - logo centred on blue bg")
+
+              # ── Small image: 55x58 (Inno Setup top-right corner) ─────────────
+              small_bg = Image.new("RGB", (55, 58), BG_BLUE)
+              logo_small = img.resize((48, 48), Image.LANCZOS)
+              small_bg.paste(logo_small, (3, 5), logo_small)
+              small_bg.save("ayamil_small.bmp", format="BMP")
+              print(f"  Created ayamil_small.bmp (55x58)")
+
+              print("Done - Ayamil Coders logo embedded in both installer images.")
+
           except Exception as e:
               print(f"ERROR: {e}", file=sys.stderr)
-              print("Creating fallback BMP placeholders (solid green)...", file=sys.stderr)
+              print("Falling back to solid blue placeholders...", file=sys.stderr)
               try:
                   from PIL import Image
-                  # Fallback: solid green (matching brand colour from installer.iss: $00237E1A)
-                  Image.new("RGB", (164, 314), color=(26, 126, 35)).save("ayamil_banner.bmp", "BMP")
-                  Image.new("RGB", (55, 58), color=(26, 126, 35)).save("ayamil_small.bmp", "BMP")
-                  print("✓ Fallback BMPs created", file=sys.stderr)
-              except Exception as fallback_err:
-                  print(f"FATAL: Fallback also failed: {fallback_err}", file=sys.stderr)
+                  Image.new("RGB", (164, 314), color=(30, 90, 200)).save("ayamil_banner.bmp", "BMP")
+                  Image.new("RGB", (55, 58),   color=(30, 90, 200)).save("ayamil_small.bmp",  "BMP")
+                  print("Fallback BMPs created.", file=sys.stderr)
+              except Exception as fe:
+                  print(f"FATAL: {fe}", file=sys.stderr)
                   sys.exit(1)
           "@
-          
+
           $pythonScript | python -
 
       - name: Verify banner images were created
@@ -113,7 +126,10 @@ jobs:
             Write-Error "ayamil_small.bmp not found!"
             exit 1
           }
-          Write-Host "✓ Both banner images ready"
+          $b = (Get-Item "ayamil_banner.bmp").length / 1KB
+          $s = (Get-Item "ayamil_small.bmp").length / 1KB
+          Write-Host "ayamil_banner.bmp: $([math]::Round($b,1)) KB"
+          Write-Host "ayamil_small.bmp:  $([math]::Round($s,1)) KB"
 
       - name: Build Installer with Inno Setup
         run: |
@@ -126,7 +142,7 @@ jobs:
           $installer = Get-ChildItem "dist_installer\*.exe" | Select-Object -First 1
           if (!$installer) { Write-Error "Installer not found!"; exit 1 }
           $size = $installer.Length / 1MB
-          Write-Host "✓ Installer: $($installer.Name) ($([math]::Round($size,1)) MB)"
+          Write-Host "Installer: $($installer.Name)  ($([math]::Round($size,1)) MB)"
 
       - name: Upload standalone EXE
         uses: actions/upload-artifact@v4
