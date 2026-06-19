@@ -98,7 +98,7 @@ var
   EdtFromAddr:      TEdit;
   LblPKNote:        TLabel;
 
-// ── URL opener ────────────────────────────────────────────────────────
+// URL opener
 procedure OpenURL(const URL: string);
 var
   ErrCode: Integer;
@@ -116,12 +116,10 @@ begin
   OpenURL('https://www.instagram.com/ayamilcoders');
 end;
 
-// ── Build wizard pages ────────────────────────────────────────────────
+// Build wizard pages
 procedure InitializeWizard;
 begin
-  // ──────────────────────────────────────────────────────────────────
   // PAGE 1 — About Ayamil Coders
-  // ──────────────────────────────────────────────────────────────────
   PageAbout := CreateCustomPage(
     wpWelcome,
     'Welcome to ' + '{#AppName}',
@@ -163,13 +161,13 @@ begin
     Caption   :=
       'A professional admin tool for managing on-chain withdrawal requests.' + #13#10 + #13#10 +
       'Features:' + #13#10 +
-      '  •  View all withdrawal requests with real-time status' + #13#10 +
-      '  •  Approve or reject pending withdrawals' + #13#10 +
-      '  •  Automatic BH / USDT token transfers on Polygon & BSC' + #13#10 +
-      '  •  Multi-network wallet balance viewer (Polygon 137 + BSC 56)' + #13#10 +
-      '  •  Double-payment protection — prevents duplicate on-chain sends' + #13#10 +
-      '  •  Encrypted private-key storage with passphrase' + #13#10 +
-      '  •  Simulation mode for safe testing before going live';
+      '  *  View all withdrawal requests with real-time status' + #13#10 +
+      '  *  Approve or reject pending withdrawals' + #13#10 +
+      '  *  Automatic BH / USDT token transfers on Polygon & BSC' + #13#10 +
+      '  *  Multi-network wallet balance viewer (Polygon 137 + BSC 56)' + #13#10 +
+      '  *  Double-payment protection - prevents duplicate on-chain sends' + #13#10 +
+      '  *  Encrypted private-key storage with passphrase' + #13#10 +
+      '  *  Simulation mode for safe testing before going live';
     Font.Size := 9;
     Left  := 0;
     Top   := 62;
@@ -211,7 +209,7 @@ begin
   begin
     Parent     := PageAbout.Surface;
     Caption    := '   Instagram:  instagram.com/ayamilcoders';
-    Font.Color := $00A01CC5;   // Instagram purple
+    Font.Color := $00A01CC5;
     Font.Style := [fsUnderline];
     Cursor     := crHand;
     Left := 0;
@@ -220,9 +218,7 @@ begin
     OnClick   := @OnInstagramClick;
   end;
 
-  // ──────────────────────────────────────────────────────────────────
   // PAGE 2 — Wallet Setup
-  // ──────────────────────────────────────────────────────────────────
   PageWallet := CreateCustomPage(
     PageAbout.ID,
     'Wallet Setup',
@@ -236,8 +232,8 @@ begin
     Caption  :=
       'Enter the wallet address that will send USDT / BH tokens to customers.' + #13#10 +
       'This wallet must hold:' + #13#10 +
-      '  •  MATIC (for gas fees on Polygon), or BNB (for gas on BSC)' + #13#10 +
-      '  •  Enough BH or USDT tokens to cover the pending withdrawals';
+      '  *  MATIC (for gas fees on Polygon), or BNB (for gas on BSC)' + #13#10 +
+      '  *  Enough BH or USDT tokens to cover the pending withdrawals';
     Font.Size:= 9;
     Left  := 0;
     Top   := 0;
@@ -276,12 +272,12 @@ begin
   begin
     Parent   := PageWallet.Surface;
     Caption  :=
-      '⚠  Your PRIVATE KEY is NOT entered here.' + #13#10 +
+      'WARNING: Your PRIVATE KEY is NOT entered here.' + #13#10 +
       'You will enter it securely inside the app after installation.' + #13#10 +
       'The app encrypts it with a passphrase of your choice and never' + #13#10 +
       'stores it in plain text.' + #13#10 + #13#10 +
-      'You can skip this page — the wallet address can also be set' + #13#10 +
-      'in  Wallet & API Settings  after the app opens.';
+      'You can skip this page - the wallet address can also be set' + #13#10 +
+      'in Wallet & API Settings after the app opens.';
     Font.Size := 9;
     Font.Color:= $00006614;
     Left  := 0;
@@ -293,7 +289,7 @@ begin
   end;
 end;
 
-// ── Write initial config after install ───────────────────────────────
+// Write initial config after install
 procedure WriteInitialConfig(const FromAddress: string);
 var
   ConfigDir:  string;
@@ -304,7 +300,6 @@ begin
   ConfigPath := ConfigDir + '\config.json';
 
   // Only write if the file does not already exist
-  // (don't overwrite existing user config on reinstall)
   if FileExists(ConfigPath) then
     Exit;
 
@@ -337,14 +332,13 @@ begin
     WriteInitialConfig(EdtFromAddr.Text);
 end;
 
-// ── Validation on Next ────────────────────────────────────────────────
+// Validation on Next
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
 
   if CurPageID = PageWallet.ID then
   begin
-    // From address is optional — just validate format if provided
     if (Length(EdtFromAddr.Text) > 0) and
        (Length(EdtFromAddr.Text) < 42) then
     begin
@@ -354,7 +348,6 @@ begin
         'You can leave it blank and set it in the app later.',
         mbInformation, MB_OK
       );
-      // Don't block — let the user continue anyway
     end;
   end;
 end;
