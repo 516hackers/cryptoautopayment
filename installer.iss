@@ -319,7 +319,7 @@ begin
   begin
     Parent     := PageAbout.Surface;
     Caption    := '  Facebook: facebook.com/ayamilcoders';
-    Font.Color := clBlue;
+    Font.Color := $00FF0000;  // Blue (RGB: 0, 0, 255) - Replaced clBlue
     Font.Style := [fsUnderline];
     Cursor     := crHand;
     Left       := 0;
@@ -333,7 +333,7 @@ begin
   begin
     Parent     := PageAbout.Surface;
     Caption    := '  Instagram: instagram.com/ayamilcoders';
-    Font.Color := $00A01CC5;
+    Font.Color := $00A01CC5; // Purple color
     Font.Style := [fsUnderline];
     Cursor     := crHand;
     Left       := 0;
