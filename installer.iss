@@ -247,7 +247,7 @@ begin
     Caption   := '{#AppName}  v' + NEW_VERSION;
     Font.Size := 18;
     Font.Style:= [fsBold];
-    Font.Color:= clGreen;
+    Font.Color:= clLime;    // Changed from clGreen to clLime
     Left      := 0;
     Top       := 0;
     AutoSize  := True;
@@ -280,7 +280,7 @@ begin
     if IsUpgradeMode then
       Font.Color:= clBlue
     else
-      Font.Color:= clGreen;
+      Font.Color:= clLime;   // Changed from clGreen to clLime
     Left      := 0;
     Top       := 56;
     AutoSize  := True;
@@ -426,9 +426,9 @@ begin
         'in Wallet & API Settings after the app opens.';
     Font.Size := 9;
     if IsUpgradeMode then
-      Font.Color := clGreen
+      Font.Color := clLime    // Changed from clGreen to clLime
     else
-      Font.Color := clGreen;
+      Font.Color := clLime;   // Changed from clGreen to clLime
     Left     := 0;
     Top      := 172;
     Width    := 460;
