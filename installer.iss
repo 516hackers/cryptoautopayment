@@ -2,15 +2,17 @@
 ;  Infinity Meta Hub — Windows Installer
 ;  Built with Inno Setup 6
 ;  Developed by Ayamil Coders
+;  Version 4.0
 ; ============================================================
 
 #define AppName      "Infinity Meta Hub"
-#define AppVersion   "2.0.0"
+#define AppVersion   "4.0.0"
 #define AppPublisher "Ayamil Coders"
 #define AppExeName   "InfinityMetaHub.exe"
 #define AppURL       "https://www.facebook.com/ayamilcoders"
 
 [Setup]
+; Use the same AppId to detect previous installations
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -19,6 +21,8 @@ AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
+
+; Default installation directory
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
@@ -27,7 +31,7 @@ AllowNoIcons=yes
 WizardImageFile=ayamil_banner.bmp
 WizardSmallImageFile=ayamil_small.bmp
 
-; Application icon (favicon) - now properly set!
+; Application icon (favicon)
 SetupIconFile=imh.ico
 
 WizardStyle=modern
@@ -37,12 +41,25 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName}
+
+; IMPORTANT: For update/upgrade support
 PrivilegesRequired=admin
 ShowLanguageDialog=no
 DisableWelcomePage=no
 DisableDirPage=no
 DisableProgramGroupPage=yes
 ArchitecturesInstallIn64BitMode=x64compatible
+
+; These flags enable update/upgrade behavior
+; "uninsneveruninstall" prevents the uninstaller from removing certain files
+; "onlyifdoesntexist" prevents overwriting user data
+UsePreviousAppDir=yes
+UsePreviousGroup=yes
+UsePreviousLanguage=yes
+DisableReadyPage=no
+AlwaysRestart=no
+; Don't show the ready page for updates
+DisableReadyMemo=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -53,15 +70,20 @@ Name: "desktopicon"; \
   GroupDescription: "Shortcuts:"
 
 [Files]
-; Main executable
+; Main executable - will overwrite existing
 Source: "dist\InfinityMetaHub.exe"; DestDir: "{app}"; \
   Flags: ignoreversion; DestName: "{#AppExeName}"
-; Logo image (shown in the app folder too)
+
+; Logo image - will overwrite existing
 Source: "ayamil.jpg"; DestDir: "{app}"; Flags: ignoreversion
-; Favicon image
+
+; Favicon image - will overwrite existing
 Source: "imh.png"; DestDir: "{app}"; Flags: ignoreversion
-; ICO file (optional - for reference)
+
+; ICO file - will overwrite existing
 Source: "imh.ico"; DestDir: "{app}"; Flags: ignoreversion
+
+; NOTE: User config files are NOT overwritten (they are in AppData)
 
 [Icons]
 Name: "{group}\{#AppName}";                   Filename: "{app}\{#AppExeName}"
@@ -75,7 +97,7 @@ Filename: "{app}\{#AppExeName}"; \
   Flags: nowait postinstall skipifsilent
 
 ; ============================================================
-;  Pascal script — custom wizard pages
+;  Pascal script — custom wizard pages with Update Detection
 ; ============================================================
 [Code]
 
@@ -98,7 +120,11 @@ var
   EdtFromAddr:      TEdit;
   LblPKNote:        TLabel;
 
-// URL opener
+  // Update/Upgrade detection
+  IsUpdate:         Boolean;
+  OldVersion:       String;
+
+// ── URL opener ────────────────────────────────────────────────────────
 procedure OpenURL(const URL: string);
 var
   ErrCode: Integer;
@@ -116,14 +142,61 @@ begin
   OpenURL('https://www.instagram.com/ayamilcoders');
 end;
 
-// Build wizard pages
-procedure InitializeWizard;
+// ── Detect if this is an update/upgrade ─────────────────────────────
+function IsUpgradeInstalled(): Boolean;
+var
+  UninstallKey: String;
+  OldVersionStr: String;
 begin
+  Result := False;
+  OldVersion := '';
+  
+  // Check if the application is already installed
+  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + '{#AppId}';
+  
+  if RegKeyExists(HKLM, UninstallKey) or RegKeyExists(HKCU, UninstallKey) then
+  begin
+    Result := True;
+    
+    // Try to get the old version
+    if RegQueryStringValue(HKLM, UninstallKey, 'DisplayVersion', OldVersionStr) then
+      OldVersion := OldVersionStr
+    else if RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', OldVersionStr) then
+      OldVersion := OldVersionStr;
+      
+    if OldVersion = '' then
+      OldVersion := 'Unknown';
+  end;
+end;
+
+// ── Build wizard pages ────────────────────────────────────────────────
+procedure InitializeWizard;
+var
+  WelcomeText: String;
+  SubText: String;
+begin
+  // Check if this is an update
+  IsUpdate := IsUpgradeInstalled();
+  
+  // Customize welcome page based on update status
+  if IsUpdate then
+  begin
+    WelcomeText := 'Upgrading to ' + '{#AppName} v{#AppVersion}';
+    SubText := 'You are upgrading from version ' + OldVersion + ' to v{#AppVersion}';
+  end
+  else
+  begin
+    WelcomeText := 'Welcome to ' + '{#AppName} v{#AppVersion}';
+    SubText := 'Developed by {#AppPublisher}';
+  end;
+
+  // ──────────────────────────────────────────────────────────────────
   // PAGE 1 — About Ayamil Coders
+  // ──────────────────────────────────────────────────────────────────
   PageAbout := CreateCustomPage(
     wpWelcome,
-    'Welcome to ' + '{#AppName}',
-    'Developed by {#AppPublisher}'
+    WelcomeText,
+    SubText
   );
 
   // App title
@@ -131,7 +204,7 @@ begin
   with LblAppTitle do
   begin
     Parent    := PageAbout.Surface;
-    Caption   := '{#AppName}';
+    Caption   := '{#AppName} v{#AppVersion}';
     Font.Size := 20;
     Font.Style:= [fsBold];
     Font.Color:= $00237E1A;
@@ -140,17 +213,34 @@ begin
     AutoSize := True;
   end;
 
-  // Developer credit
-  LblDevBy := TLabel.Create(PageAbout);
-  with LblDevBy do
+  // Version info - show if update
+  if IsUpdate then
   begin
-    Parent    := PageAbout.Surface;
-    Caption   := 'Developed by {#AppPublisher}';
-    Font.Size := 10;
-    Font.Color:= $00555555;
-    Left := 0;
-    Top  := 36;
-    AutoSize := True;
+    LblDevBy := TLabel.Create(PageAbout);
+    with LblDevBy do
+    begin
+      Parent    := PageAbout.Surface;
+      Caption   := 'Upgrading from v' + OldVersion + ' to v{#AppVersion}';
+      Font.Size := 10;
+      Font.Color:= $000000FF;  // Red color for update
+      Left := 0;
+      Top  := 36;
+      AutoSize := True;
+    end;
+  end
+  else
+  begin
+    LblDevBy := TLabel.Create(PageAbout);
+    with LblDevBy do
+    begin
+      Parent    := PageAbout.Surface;
+      Caption   := 'Developed by {#AppPublisher}';
+      Font.Size := 10;
+      Font.Color:= $00555555;
+      Left := 0;
+      Top  := 36;
+      AutoSize := True;
+    end;
   end;
 
   // Description
@@ -167,13 +257,17 @@ begin
       '  *  Multi-network wallet balance viewer (Polygon 137 + BSC 56)' + #13#10 +
       '  *  Double-payment protection - prevents duplicate on-chain sends' + #13#10 +
       '  *  Encrypted private-key storage with passphrase' + #13#10 +
-      '  *  Simulation mode for safe testing before going live';
+      '  *  Simulation mode for safe testing before going live' + #13#10 + #13#10 +
+      'Version 4.0 Updates:' + #13#10 +
+      '  *  Improved performance and stability' + #13#10 +
+      '  *  Enhanced security features' + #13#10 +
+      '  *  Better error handling and logging';
     Font.Size := 9;
     Left  := 0;
     Top   := 62;
     Width := 440;
     AutoSize := False;
-    Height   := 180;
+    Height   := 220;
     WordWrap := True;
   end;
 
@@ -186,7 +280,7 @@ begin
     Font.Size:= 9;
     Font.Style:=[fsBold];
     Left := 0;
-    Top  := 258;
+    Top  := 290;
     AutoSize := True;
   end;
 
@@ -199,7 +293,7 @@ begin
     Font.Style := [fsUnderline];
     Cursor     := crHand;
     Left := 0;
-    Top  := 282;
+    Top  := 314;
     AutoSize  := True;
     OnClick   := @OnFacebookClick;
   end;
@@ -213,83 +307,88 @@ begin
     Font.Style := [fsUnderline];
     Cursor     := crHand;
     Left := 0;
-    Top  := 308;
+    Top  := 340;
     AutoSize  := True;
     OnClick   := @OnInstagramClick;
   end;
 
-  // PAGE 2 — Wallet Setup
-  PageWallet := CreateCustomPage(
-    PageAbout.ID,
-    'Wallet Setup',
-    'Pre-configure your sending wallet (you can change this inside the app later)'
-  );
-
-  LblWalletInfo := TLabel.Create(PageWallet);
-  with LblWalletInfo do
+  // ──────────────────────────────────────────────────────────────────
+  // PAGE 2 — Wallet Setup (Skip during updates)
+  // ──────────────────────────────────────────────────────────────────
+  if not IsUpdate then
   begin
-    Parent   := PageWallet.Surface;
-    Caption  :=
-      'Enter the wallet address that will send USDT / BH tokens to customers.' + #13#10 +
-      'This wallet must hold:' + #13#10 +
-      '  *  MATIC (for gas fees on Polygon), or BNB (for gas on BSC)' + #13#10 +
-      '  *  Enough BH or USDT tokens to cover the pending withdrawals';
-    Font.Size:= 9;
-    Left  := 0;
-    Top   := 0;
-    Width := 460;
-    Height:= 80;
-    AutoSize := False;
-    WordWrap := True;
-  end;
+    PageWallet := CreateCustomPage(
+      PageAbout.ID,
+      'Wallet Setup',
+      'Pre-configure your sending wallet (you can change this inside the app later)'
+    );
 
-  LblFromAddr := TLabel.Create(PageWallet);
-  with LblFromAddr do
-  begin
-    Parent   := PageWallet.Surface;
-    Caption  := 'From Wallet Address:';
-    Font.Size:= 9;
-    Font.Style:=[fsBold];
-    Left := 0;
-    Top  := 92;
-    AutoSize := True;
-  end;
+    LblWalletInfo := TLabel.Create(PageWallet);
+    with LblWalletInfo do
+    begin
+      Parent   := PageWallet.Surface;
+      Caption  :=
+        'Enter the wallet address that will send USDT / BH tokens to customers.' + #13#10 +
+        'This wallet must hold:' + #13#10 +
+        '  *  MATIC (for gas fees on Polygon), or BNB (for gas on BSC)' + #13#10 +
+        '  *  Enough BH or USDT tokens to cover the pending withdrawals';
+      Font.Size:= 9;
+      Left  := 0;
+      Top   := 0;
+      Width := 460;
+      Height:= 80;
+      AutoSize := False;
+      WordWrap := True;
+    end;
 
-  EdtFromAddr := TEdit.Create(PageWallet);
-  with EdtFromAddr do
-  begin
-    Parent   := PageWallet.Surface;
-    Text     := '';
-    Left     := 0;
-    Top      := 116;
-    Width    := 460;
-    Font.Name:= 'Consolas';
-    Font.Size:= 9;
-  end;
+    LblFromAddr := TLabel.Create(PageWallet);
+    with LblFromAddr do
+    begin
+      Parent   := PageWallet.Surface;
+      Caption  := 'From Wallet Address:';
+      Font.Size:= 9;
+      Font.Style:=[fsBold];
+      Left := 0;
+      Top  := 92;
+      AutoSize := True;
+    end;
 
-  LblPKNote := TLabel.Create(PageWallet);
-  with LblPKNote do
-  begin
-    Parent   := PageWallet.Surface;
-    Caption  :=
-      'WARNING: Your PRIVATE KEY is NOT entered here.' + #13#10 +
-      'You will enter it securely inside the app after installation.' + #13#10 +
-      'The app encrypts it with a passphrase of your choice and never' + #13#10 +
-      'stores it in plain text.' + #13#10 + #13#10 +
-      'You can skip this page - the wallet address can also be set' + #13#10 +
-      'in Wallet & API Settings after the app opens.';
-    Font.Size := 9;
-    Font.Color:= $00006614;
-    Left  := 0;
-    Top   := 154;
-    Width := 460;
-    Height:= 140;
-    AutoSize := False;
-    WordWrap := True;
+    EdtFromAddr := TEdit.Create(PageWallet);
+    with EdtFromAddr do
+    begin
+      Parent   := PageWallet.Surface;
+      Text     := '';
+      Left     := 0;
+      Top      := 116;
+      Width    := 460;
+      Font.Name:= 'Consolas';
+      Font.Size:= 9;
+    end;
+
+    LblPKNote := TLabel.Create(PageWallet);
+    with LblPKNote do
+    begin
+      Parent   := PageWallet.Surface;
+      Caption  :=
+        'WARNING: Your PRIVATE KEY is NOT entered here.' + #13#10 +
+        'You will enter it securely inside the app after installation.' + #13#10 +
+        'The app encrypts it with a passphrase of your choice and never' + #13#10 +
+        'stores it in plain text.' + #13#10 + #13#10 +
+        'You can skip this page - the wallet address can also be set' + #13#10 +
+        'in Wallet & API Settings after the app opens.';
+      Font.Size := 9;
+      Font.Color:= $00006614;
+      Left  := 0;
+      Top   := 154;
+      Width := 460;
+      Height:= 140;
+      AutoSize := False;
+      WordWrap := True;
+    end;
   end;
 end;
 
-// Write initial config after install
+// ── Write initial config after install ───────────────────────────────
 procedure WriteInitialConfig(const FromAddress: string);
 var
   ConfigDir:  string;
@@ -298,6 +397,16 @@ var
 begin
   ConfigDir  := ExpandConstant('{userappdata}') + '\.withdrawal_admin';
   ConfigPath := ConfigDir + '\config.json';
+
+  // During updates: DO NOT overwrite existing config
+  if IsUpdate then
+  begin
+    if FileExists(ConfigPath) then
+    begin
+      Log('Update detected: Keeping existing config file.');
+      Exit;
+    end;
+  end;
 
   // Only write if the file does not already exist
   if FileExists(ConfigPath) then
@@ -329,15 +438,27 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
-    WriteInitialConfig(EdtFromAddr.Text);
+  begin
+    if IsUpdate then
+    begin
+      Log('Performing update to version {#AppVersion}');
+      // If PageWallet doesn't exist (update), use empty string
+      if PageWallet = nil then
+        WriteInitialConfig('')
+      else
+        WriteInitialConfig(EdtFromAddr.Text);
+    end
+    else
+      WriteInitialConfig(EdtFromAddr.Text);
+  end;
 end;
 
-// Validation on Next
+// ── Validation on Next ────────────────────────────────────────────────
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
 
-  if CurPageID = PageWallet.ID then
+  if (CurPageID = PageWallet.ID) and (not IsUpdate) then
   begin
     if (Length(EdtFromAddr.Text) > 0) and
        (Length(EdtFromAddr.Text) < 42) then
@@ -350,4 +471,42 @@ begin
       );
     end;
   end;
+end;
+
+// ── Custom Ready Page message ────────────────────────────────────────
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, 
+                         MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, 
+                         MemoTasksInfo: String): String;
+var
+  S: String;
+begin
+  S := '';
+
+  if IsUpdate then
+  begin
+    S := S + 'This will upgrade Infinity Meta Hub from v' + OldVersion + ' to v{#AppVersion}.' + NewLine;
+    S := S + 'Your existing settings and configurations will be preserved.' + NewLine;
+    S := S + NewLine;
+  end;
+
+  if MemoDirInfo <> '' then
+    S := S + MemoDirInfo + NewLine + NewLine;
+
+  if MemoGroupInfo <> '' then
+    S := S + MemoGroupInfo + NewLine + NewLine;
+
+  if MemoTasksInfo <> '' then
+    S := S + MemoTasksInfo + NewLine + NewLine;
+
+  Result := S;
+end;
+
+// ── Custom message for upgrade ──────────────────────────────────────
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  
+  // Skip wallet setup page during updates
+  if (PageID = PageWallet.ID) and IsUpdate then
+    Result := True;
 end;
