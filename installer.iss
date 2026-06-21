@@ -407,36 +407,36 @@ begin
     Enabled   := not IsUpgradeMode;
   end;
 
-  LblPKNote := TLabel.Create(PageWallet);
-  with LblPKNote do
-  begin
-    Parent   := PageWallet.Surface;
-    if IsUpgradeMode then
-      Caption :=
-        '✔ Upgrade preserves your encrypted private key.' + #13#10 +
-        'You will NOT need to re-enter it.' + #13#10 + #13#10 +
-        'Click Next to proceed with the installation.'
-    else
-      Caption :=
-        '⚠ Your PRIVATE KEY is NOT entered here.' + #13#10 +
-        'You will enter it securely inside the app after installation.' + #13#10 +
-        'The app encrypts it with a passphrase of your choice and never' + #13#10 +
-        'stores it in plain text.' + #13#10 + #13#10 +
-        'You can skip this page — the wallet address can also be set' + #13#10 +
-        'in Wallet & API Settings after the app opens.';
-    Font.Size := 9;
-    if IsUpgradeMode then
-      Font.Color:= $00006614   // green
-    else
-      Font.Color:= $00006614;
-    Left     := 0;
-    Top      := 172;
-    Width    := 460;
-    Height   := 140;
-    AutoSize := False;
-    WordWrap := True;
-  end;
+LblPKNote := TLabel.Create(PageWallet);
+with LblPKNote do
+begin
+  Parent   := PageWallet.Surface;
+  if IsUpgradeMode then
+    Caption :=
+      '✔ Upgrade preserves your encrypted private key.' + #13#10 +
+      'You will NOT need to re-enter it.' + #13#10 + #13#10 +
+      'Click Next to proceed with the installation.'
+  else
+    Caption :=
+      '⚠ Your PRIVATE KEY is NOT entered here.' + #13#10 +
+      'You will enter it securely inside the app after installation.' + #13#10 +
+      'The app encrypts it with a passphrase of your choice and never' + #13#10 +
+      'stores it in plain text.' + #13#10 + #13#10 +
+      'You can skip this page — the wallet address can also be set' + #13#10 +
+      'in Wallet & API Settings after the app opens.';
+  Font.Size := 9;
+  if IsUpgradeMode then
+    Font.Color := clGreen    // ✅ FIXED: Changed from $00006614 to clGreen
+  else
+    Font.Color := clGreen;   // ✅ FIXED: Same fix here too
+  Left     := 0;
+  Top      := 172;
+  Width    := 460;
+  Height   := 140;
+  AutoSize := False;
+  WordWrap := True;
 end;
+
 
 // ── Write initial config (fresh install only) ─────────────────────────
 procedure WriteInitialConfig(const FromAddress: string);
