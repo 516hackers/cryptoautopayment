@@ -425,10 +425,11 @@ begin
         'You can skip this page — the wallet address can also be set' + #13#10 +
         'in Wallet & API Settings after the app opens.';
     Font.Size := 9;
+    // Use numeric color values that Inno Setup understands
     if IsUpgradeMode then
-      Font.Color := clGreen
+      Font.Color := $0000FF00   // Green (RGB: 0, 255, 0)
     else
-      Font.Color := clGreen;
+      Font.Color := $0000FF00;  // Green (RGB: 0, 255, 0)
     Left     := 0;
     Top      := 172;
     Width    := 460;
