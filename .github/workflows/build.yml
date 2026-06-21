@@ -1,4 +1,4 @@
-name: Build — EXE + Installer v4.0.0
+name: Build — EXE + Installer
 
 on:
   push:
@@ -10,23 +10,21 @@ on:
       - "imh.png"
       - "ayamil.jpg"
       - ".github/workflows/build.yml"
-  workflow_dispatch:
-
-env:
-  APP_VERSION: "4.0.0"
+  workflow_dispatch: {}
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify required assets
+      - name: Verify required assets exist
         run: |
           foreach ($f in @("ayamil.jpg", "imh.png")) {
             if (!(Test-Path $f)) {
-              Write-Error "Required asset '$f' not found!"
+              Write-Error "Required asset '$f' not found in repo root!"
               exit 1
             }
           }
@@ -43,13 +41,20 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller pillow
 
-      - name: Convert PNG to ICO
+      - name: Convert PNG to ICO for executable icon
         run: |
           python -c "
           from PIL import Image
-          img = Image.open('imh.png')
-          img.save('imh.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
-          print('SUCCESS: Created imh.ico')
+          import sys
+          
+          try:
+              img = Image.open('imh.png')
+              # Save as ICO with multiple sizes for Windows compatibility
+              img.save('imh.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
+              print('SUCCESS: Created imh.ico')
+          except Exception as e:
+              print(f'Error creating ICO: {e}', file=sys.stderr)
+              sys.exit(1)
           "
 
       - name: Build EXE with PyInstaller
@@ -58,77 +63,103 @@ jobs:
             --icon imh.ico `
             --add-data "imh.png;." `
             --add-data "ayamil.jpg;." `
-            --copy-metadata py_ecc --copy-metadata web3 --copy-metadata eth-account `
-            --copy-metadata eth-keyfile --copy-metadata eth-keys --copy-metadata eth-utils `
-            --copy-metadata eth-typing --copy-metadata eth-abi --copy-metadata eth-rlp `
-            --copy-metadata hexbytes --copy-metadata rlp --copy-metadata pycryptodome `
+            --copy-metadata py_ecc `
+            --copy-metadata web3 `
+            --copy-metadata eth-account `
+            --copy-metadata eth-keyfile `
+            --copy-metadata eth-keys `
+            --copy-metadata eth-utils `
+            --copy-metadata eth-typing `
+            --copy-metadata eth-abi `
+            --copy-metadata eth-rlp `
+            --copy-metadata hexbytes `
+            --copy-metadata rlp `
+            --copy-metadata pycryptodome `
             main.py
 
-      - name: Verify EXE
+      - name: Verify EXE was created
         run: |
-          if (!(Test-Path "dist\InfinityMetaHub.exe")) { Write-Error "EXE not found!"; exit 1 }
+          if (!(Test-Path "dist\InfinityMetaHub.exe")) {
+            Write-Error "EXE not found!"
+            exit 1
+          }
           $size = (Get-Item "dist\InfinityMetaHub.exe").length / 1MB
           Write-Host "SUCCESS: EXE created! Size: $([math]::Round($size,1)) MB"
 
-      - name: Install Inno Setup
+      - name: Install Inno Setup 6
         run: choco install innosetup -y --no-progress --ignore-checksums
 
-      - name: Prepare wizard images
+      - name: Create installer output directory
+        run: mkdir dist_installer -ErrorAction SilentlyContinue
+
+      - name: Prepare wizard images (ayamil.jpg -> BMP)
         run: |
-          python -c "
-          from PIL import Image
+          $pythonScript = @"
+          import sys
           from pathlib import Path
-          src = Path('ayamil.jpg')
-          img = Image.open(src).convert('RGBA')
-          BG = (30, 90, 200)
-          # Banner
-          banner = Image.new('RGB', (164, 314), BG)
-          logo = img.resize((154, 154), Image.Resampling.LANCZOS)
-          banner.paste(logo, (5, 80), logo)
-          banner.save('ayamil_banner.bmp')
-          # Small
-          small = Image.new('RGB', (55, 58), BG)
-          s_logo = img.resize((48, 48), Image.Resampling.LANCZOS)
-          small.paste(s_logo, (3, 5), s_logo)
-          small.save('ayamil_small.bmp')
-          print('SUCCESS: Wizard images created')
-          "
+          
+          try:
+              from PIL import Image
+              
+              src = Path("ayamil.jpg")
+              if not src.exists():
+                  raise FileNotFoundError(f"{src} not found in repo root")
+              
+              img = Image.open(src).convert("RGBA")
+              BG_BLUE = (30, 90, 200)
+              
+              # Banner: 164x314
+              W, H = 164, 314
+              banner = Image.new("RGB", (W, H), BG_BLUE)
+              logo_w = W - 10
+              logo_resized = img.resize((logo_w, logo_w), Image.Resampling.LANCZOS)
+              banner.paste(logo_resized, (5, (H - logo_w) // 2), logo_resized)
+              banner.save("ayamil_banner.bmp", format="BMP")
+              print("SUCCESS: Created ayamil_banner.bmp (164x314)")
+              
+              # Small: 55x58
+              small_bg = Image.new("RGB", (55, 58), BG_BLUE)
+              small_img = img.resize((48, 48), Image.Resampling.LANCZOS)
+              small_bg.paste(small_img, (3, 5), small_img)
+              small_bg.save("ayamil_small.bmp", format="BMP")
+              print("SUCCESS: Created ayamil_small.bmp (55x58)")
+              
+          except Exception as e:
+              print(f"ERROR: {e}", file=sys.stderr)
+              sys.exit(1)
+          "@
+          $pythonScript | python -
 
-      - name: Build Installer
+      - name: Copy ICO file for installer
+        run: copy imh.ico dist_installer\
+
+      - name: Build Installer with Inno Setup
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { 
+            Write-Error "Inno Setup compilation failed!"
+            exit $LASTEXITCODE 
+          }
 
-      - name: Rename artifacts
+      - name: Verify installer was created
         run: |
-          Rename-Item "dist\InfinityMetaHub.exe" "dist\InfinityMetaHub_v${{ env.APP_VERSION }}.exe"
+          $installer = Get-ChildItem "dist_installer\*.exe" | Where-Object { $_.Name -notlike "*.ico" } | Select-Object -First 1
+          if (!$installer) { 
+            Write-Error "Installer not found!"; 
+            exit 1 
+          }
+          $size = $installer.Length / 1MB
+          Write-Host "SUCCESS: Installer created: $($installer.Name) ($([math]::Round($size,1)) MB)"
 
-      - name: Upload EXE
+      - name: Upload standalone EXE
         uses: actions/upload-artifact@v4
         with:
-          name: InfinityMetaHub-v${{ env.APP_VERSION }}-EXE-only
-          path: dist\InfinityMetaHub_v${{ env.APP_VERSION }}.exe
+          name: InfinityMetaHub-EXE-only
+          path: dist\InfinityMetaHub.exe
 
-      - name: Upload Installer
+      - name: Upload Windows Installer (Setup)
         uses: actions/upload-artifact@v4
         with:
-          name: InfinityMetaHub-v${{ env.APP_VERSION }}-Setup-Installer
-          path: dist_installer\InfinityMetaHub_Setup_v${{ env.APP_VERSION }}.exe
-
-      - name: Create GitHub Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.APP_VERSION }}
-          name: "Infinity Meta Hub v${{ env.APP_VERSION }}"
-          body: |
-            ## Infinity Meta Hub v${{ env.APP_VERSION }}
-            **Build:** ${{ github.sha }}
-            ### Downloads
-            - `InfinityMetaHub_Setup_v${{ env.APP_VERSION }}.exe` (Recommended)
-            - `InfinityMetaHub_v${{ env.APP_VERSION }}.exe`
-          files: |
-            dist\InfinityMetaHub_v${{ env.APP_VERSION }}.exe
-            dist_installer\InfinityMetaHub_Setup_v${{ env.APP_VERSION }}.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: InfinityMetaHub-Setup-Installer
+          path: dist_installer\*.exe
