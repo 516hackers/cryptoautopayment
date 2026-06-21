@@ -161,5 +161,5 @@ jobs:
       - name: Upload Windows Installer (Setup)
         uses: actions/upload-artifact@v4
         with:
-          name: InfinityMetaHub-Setup-Installer
+          name: InfinityMetaHub-Setup-Installer-v4.0
           path: dist_installer\*.exe
