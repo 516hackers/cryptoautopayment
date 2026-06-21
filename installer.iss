@@ -407,36 +407,36 @@ begin
     Enabled   := not IsUpgradeMode;
   end;
 
-  LblPKNote := TLabel.Create(PageWallet);
-  with LblPKNote do
-  begin
-    Parent   := PageWallet.Surface;
-    if IsUpgradeMode then
-      Caption :=
-        '✔ Upgrade preserves your encrypted private key.' + #13#10 +
-        'You will NOT need to re-enter it.' + #13#10 + #13#10 +
-        'Click Next to proceed with the installation.'
-    else
-      Caption :=
-        '⚠ Your PRIVATE KEY is NOT entered here.' + #13#10 +
-        'You will enter it securely inside the app after installation.' + #13#10 +
-        'The app encrypts it with a passphrase of your choice and never' + #13#10 +
-        'stores it in plain text.' + #13#10 + #13#10 +
-        'You can skip this page — the wallet address can also be set' + #13#10 +
-        'in Wallet & API Settings after the app opens.';
-    Font.Size := 9;
-    // Use numeric color values that Inno Setup understands
-    if IsUpgradeMode then
-      Font.Color := $0000FF00   // Green (RGB: 0, 255, 0)
-    else
-      Font.Color := $0000FF00;  // Green (RGB: 0, 255, 0)
-    Left     := 0;
-    Top      := 172;
-    Width    := 460;
-    Height   := 140;
-    AutoSize := False;
-    WordWrap := True;
-  end;
+LblPKNote := TLabel.Create(PageWallet);
+with LblPKNote do
+begin
+  Parent   := PageWallet.Surface;
+  if IsUpgradeMode then
+    Caption :=
+      '✔ Upgrade preserves your encrypted private key.' + #13#10 +
+      'You will NOT need to re-enter it.' + #13#10 + #13#10 +
+      'Click Next to proceed with the installation.'
+  else
+    Caption :=
+      '⚠ Your PRIVATE KEY is NOT entered here.' + #13#10 +
+      'You will enter it securely inside the app after installation.' + #13#10 +
+      'The app encrypts it with a passphrase of your choice and never' + #13#10 +
+      'stores it in plain text.' + #13#10 + #13#10 +
+      'You can skip this page — the wallet address can also be set' + #13#10 +
+      'in Wallet & API Settings after the app opens.';
+  Font.Size := 9;
+  // THE FIX: Use RGB() macro instead of hex values
+  if IsUpgradeMode then
+    Font.Color := RGB(0, 255, 0)
+  else
+    Font.Color := RGB(0, 255, 0);
+  Left     := 0;
+  Top      := 172;
+  Width    := 460;
+  Height   := 140;
+  AutoSize := False;
+  WordWrap := True;
+end;
 end;
 
 // ── Write initial config (fresh install only) ─────────────────────────
