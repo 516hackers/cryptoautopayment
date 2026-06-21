@@ -23,9 +23,9 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
 
-WizardImageFile=ayamil_banner.bmp
+WizardImageFile=ayamil.jpg
 WizardImageStretch=yes
-WizardSmallImageFile=ayamil_small.bmp
+WizardSmallImageFile=ayamil.jpg
 WizardStyle=modern
 
 OutputDir=dist_installer
@@ -39,10 +39,6 @@ PrivilegesRequired=admin
 ShowLanguageDialog=no
 
 DisableWelcomePage=no
-CloseApplications=yes
-CloseApplicationsFilter=*.exe
-RestartIfNeededByRun=yes
-UninstallRestartComputer=no
 DisableDirPage=no
 DisableProgramGroupPage=yes
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -51,7 +47,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checked
 
 [Files]
 Source: "dist\InfinityMetaHub.exe"; DestDir: "{app}"; Flags: ignoreversion; DestName: "{#AppExeName}"
@@ -66,7 +62,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; Flags: nowait postinstall skipifsilent
 
 ; ============================================================
-; Pascal Script - CLEAN VERSION (No problematic 'with' blocks)
+; Pascal Script — Upgrade Support + Custom Pages
 ; ============================================================
 [Code]
 const
@@ -76,7 +72,6 @@ var
   PageAbout: TWizardPage;
   PageWallet: TWizardPage;
   IsUpgradeMode: Boolean;
-
   LblAppTitle, LblDevBy, LblDesc, LblVersion: TLabel;
   LblSocialTitle, LblFacebook, LblInstagram: TLabel;
   LblWalletInfo, LblFromAddr, LblPKNote: TLabel;
@@ -111,9 +106,9 @@ begin
   if IsUpgradeMode then
   begin
     Msg := '{#AppName} is already installed.' + #13#10 + #13#10 +
-           'Installed version : ' + OldVer + #13#10 +
-           'New version : ' + NEW_VERSION + #13#10 + #13#10 +
-           'Click OK to upgrade, or Cancel to quit.';
+           'Installed version: ' + OldVer + #13#10 +
+           'New version: ' + NEW_VERSION + #13#10 + #13#10 +
+           'Click OK to upgrade, Cancel to quit.';
     if MsgBox(Msg, mbConfirmation, MB_OKCANCEL) = IDCANCEL then
       Result := False;
   end;
@@ -123,29 +118,36 @@ procedure InitializeWizard;
 var AboutCaption, AboutSubCaption, DescText, OldVer: string;
 begin
   OldVer := GetInstalledVersion;
+  IsUpgradeMode := OldVer <> '';
 
   if IsUpgradeMode then
   begin
-    AboutCaption := 'Upgrading {#AppName} to v' + NEW_VERSION;
+    AboutCaption := 'Upgrading ' + '{#AppName} to v' + NEW_VERSION;
     AboutSubCaption := 'Upgrade from v' + OldVer;
-    DescText := 'Settings and wallet are preserved.';
+    DescText := 'You are upgrading from v' + OldVer + ' to v' + NEW_VERSION + '.' + #13#10 + #13#10 +
+                'All settings and wallet data will be preserved.';
   end
   else
   begin
     AboutCaption := 'Welcome to {#AppName}';
     AboutSubCaption := 'Developed by {#AppPublisher}';
-    DescText := 'Professional admin tool for on-chain withdrawals.';
+    DescText := 'A professional admin tool for managing on-chain withdrawal requests.' + #13#10 + #13#10 +
+                'Features:' + #13#10 +
+                ' • View and manage withdrawal requests' + #13#10 +
+                ' • Automatic BH / USDT transfers' + #13#10 +
+                ' • Multi-network support (Polygon + BSC)' + #13#10 +
+                ' • Secure encrypted private key storage';
   end;
 
   PageAbout := CreateCustomPage(wpWelcome, AboutCaption, AboutSubCaption);
 
-  // === About Page Controls ===
+  // About Page
   LblAppTitle := TLabel.Create(PageAbout);
   LblAppTitle.Parent := PageAbout.Surface;
   LblAppTitle.Caption := '{#AppName} v' + NEW_VERSION;
-  LblAppTitle.Font.Size := 18;
+  LblAppTitle.Font.Size := 20;
   LblAppTitle.Font.Style := [fsBold];
-  LblAppTitle.Font.Color := clLime;
+  LblAppTitle.Font.Color := $00237E1A;
   LblAppTitle.Left := 0;
   LblAppTitle.Top := 0;
   LblAppTitle.AutoSize := True;
@@ -154,32 +156,19 @@ begin
   LblDevBy.Parent := PageAbout.Surface;
   LblDevBy.Caption := 'Developed by {#AppPublisher}';
   LblDevBy.Font.Size := 10;
-  LblDevBy.Font.Color := clGray;
+  LblDevBy.Font.Color := $00555555;
   LblDevBy.Left := 0;
-  LblDevBy.Top := 34;
+  LblDevBy.Top := 36;
   LblDevBy.AutoSize := True;
-
-  LblVersion := TLabel.Create(PageAbout);
-  LblVersion.Parent := PageAbout.Surface;
-  if IsUpgradeMode then
-    LblVersion.Caption := ' UPGRADE: v' + OldVer + ' → v' + NEW_VERSION + ' '
-  else
-    LblVersion.Caption := ' NEW INSTALL v' + NEW_VERSION + ' ';
-  LblVersion.Font.Size := 9;
-  LblVersion.Font.Style := [fsBold];
-  if IsUpgradeMode then LblVersion.Font.Color := clBlue else LblVersion.Font.Color := clLime;
-  LblVersion.Left := 0;
-  LblVersion.Top := 56;
-  LblVersion.AutoSize := True;
 
   LblDesc := TLabel.Create(PageAbout);
   LblDesc.Parent := PageAbout.Surface;
   LblDesc.Caption := DescText;
   LblDesc.Font.Size := 9;
   LblDesc.Left := 0;
-  LblDesc.Top := 82;
+  LblDesc.Top := 62;
   LblDesc.Width := 440;
-  LblDesc.Height := 170;
+  LblDesc.Height := 180;
   LblDesc.AutoSize := False;
   LblDesc.WordWrap := True;
 
@@ -189,7 +178,7 @@ begin
   LblSocialTitle.Font.Size := 9;
   LblSocialTitle.Font.Style := [fsBold];
   LblSocialTitle.Left := 0;
-  LblSocialTitle.Top := 262;
+  LblSocialTitle.Top := 258;
   LblSocialTitle.AutoSize := True;
 
   LblFacebook := TLabel.Create(PageAbout);
@@ -199,14 +188,14 @@ begin
   LblFacebook.Font.Style := [fsUnderline];
   LblFacebook.Cursor := crHand;
   LblFacebook.Left := 0;
-  LblFacebook.Top := 284;
+  LblFacebook.Top := 282;
   LblFacebook.AutoSize := True;
   LblFacebook.OnClick := @OnFacebookClick;
 
   LblInstagram := TLabel.Create(PageAbout);
   LblInstagram.Parent := PageAbout.Surface;
   LblInstagram.Caption := ' Instagram: instagram.com/ayamilcoders';
-  LblInstagram.Font.Color := clPurple;
+  LblInstagram.Font.Color := $00A01CC5;
   LblInstagram.Font.Style := [fsUnderline];
   LblInstagram.Cursor := crHand;
   LblInstagram.Left := 0;
@@ -214,20 +203,21 @@ begin
   LblInstagram.AutoSize := True;
   LblInstagram.OnClick := @OnInstagramClick;
 
-  // === Wallet Page ===
+  // Wallet Page
   PageWallet := CreateCustomPage(PageAbout.ID, 'Wallet Setup', 'Pre-configure your sending wallet');
 
   LblWalletInfo := TLabel.Create(PageWallet);
   LblWalletInfo.Parent := PageWallet.Surface;
   if IsUpgradeMode then
-    LblWalletInfo.Caption := 'You are upgrading.' + #13#10#13#10 + 'Your wallet settings are preserved.' + #13#10#13#10 + 'Click Next.'
+    LblWalletInfo.Caption := 'Upgrade in progress.' + #13#10#13#10 + 'Your existing wallet settings will be kept.'
   else
-    LblWalletInfo.Caption := 'Enter the wallet address that will send tokens.' + #13#10 + 'Must have gas + sufficient balance.';
+    LblWalletInfo.Caption := 'Enter the wallet address that will send USDT / BH tokens.' + #13#10 +
+                             'This wallet must hold gas + sufficient tokens.';
   LblWalletInfo.Font.Size := 9;
   LblWalletInfo.Left := 0;
   LblWalletInfo.Top := 0;
   LblWalletInfo.Width := 460;
-  LblWalletInfo.Height := 100;
+  LblWalletInfo.Height := 80;
   LblWalletInfo.AutoSize := False;
   LblWalletInfo.WordWrap := True;
 
@@ -237,7 +227,7 @@ begin
   LblFromAddr.Font.Size := 9;
   LblFromAddr.Font.Style := [fsBold];
   LblFromAddr.Left := 0;
-  LblFromAddr.Top := 110;
+  LblFromAddr.Top := 92;
   LblFromAddr.AutoSize := True;
   LblFromAddr.Visible := not IsUpgradeMode;
 
@@ -245,7 +235,7 @@ begin
   EdtFromAddr.Parent := PageWallet.Surface;
   EdtFromAddr.Text := '';
   EdtFromAddr.Left := 0;
-  EdtFromAddr.Top := 132;
+  EdtFromAddr.Top := 116;
   EdtFromAddr.Width := 460;
   EdtFromAddr.Font.Name := 'Consolas';
   EdtFromAddr.Font.Size := 9;
@@ -257,11 +247,12 @@ begin
   if IsUpgradeMode then
     LblPKNote.Caption := '✔ Your encrypted private key is preserved.'
   else
-    LblPKNote.Caption := '⚠ PRIVATE KEY will be set securely inside the app.';
+    LblPKNote.Caption := '⚠ PRIVATE KEY is NOT entered here.' + #13#10 +
+                         'You will enter it securely inside the app.';
   LblPKNote.Font.Size := 9;
-  LblPKNote.Font.Color := clLime;
+  LblPKNote.Font.Color := $00006614;
   LblPKNote.Left := 0;
-  LblPKNote.Top := 172;
+  LblPKNote.Top := 154;
   LblPKNote.Width := 460;
   LblPKNote.Height := 140;
   LblPKNote.AutoSize := False;
@@ -294,29 +285,10 @@ begin
   SaveStringToFile(ConfigPath, ConfigJson, False);
 end;
 
-procedure UpdateConfigVersion;
-var ConfigPath, OldContent, NewContent, VerLine: string;
-begin
-  ConfigPath := ExpandConstant('{userappdata}\.withdrawal_admin\config.json');
-  if not FileExists(ConfigPath) then Exit;
-  if not LoadStringFromFile(ConfigPath, OldContent) then Exit;
-
-  VerLine := '"app_version": "' + NEW_VERSION + '"';
-  if Pos('"app_version"', OldContent) = 0 then
-  begin
-    NewContent := Copy(OldContent, 1, Length(OldContent)-1);
-    while (Length(NewContent) > 0) and ((NewContent[Length(NewContent)] = ' ') or (NewContent[Length(NewContent)] = #13) or (NewContent[Length(NewContent)] = #10)) do
-      Delete(NewContent, Length(NewContent), 1);
-    NewContent := NewContent + ',' + #13#10 + ' ' + VerLine + #13#10 + '}';
-    SaveStringToFile(ConfigPath, NewContent, False);
-  end;
-end;
-
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
-    if IsUpgradeMode then UpdateConfigVersion
-    else WriteInitialConfig(EdtFromAddr.Text);
+    WriteInitialConfig(EdtFromAddr.Text);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -324,11 +296,6 @@ begin
   Result := True;
   if (CurPageID = PageWallet.ID) and (not IsUpgradeMode) then
     if (Length(EdtFromAddr.Text) > 0) and (Length(EdtFromAddr.Text) < 42) then
-      MsgBox('Wallet address too short. Valid address is 42 chars starting with 0x.' + #13#10#13#10 + 'You can leave it blank.', mbInformation, MB_OK);
-end;
-
-procedure CurPageChanged(CurPageID: Integer);
-begin
-  if IsUpgradeMode and (CurPageID = wpReady) then
-    WizardForm.NextButton.Caption := '&Update';
+      MsgBox('Wallet address too short. Valid address starts with 0x and is 42 characters.' + #13#10#13#10 +
+             'You can leave it blank.', mbInformation, MB_OK);
 end;
