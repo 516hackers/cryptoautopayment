@@ -38,7 +38,6 @@ UninstallDisplayName={#AppName}
 PrivilegesRequired=admin
 ShowLanguageDialog=no
 
-; Upgrade behavior
 DisableWelcomePage=no
 CloseApplications=yes
 CloseApplicationsFilter=*.exe
@@ -57,10 +56,8 @@ Name: "desktopicon"; \
   GroupDescription: "Shortcuts:"
 
 [Files]
-; Main executable
 Source: "dist\InfinityMetaHub.exe"; DestDir: "{app}"; \
   Flags: ignoreversion; DestName: "{#AppExeName}"
-; Logo image
 Source: "ayamil.jpg"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
@@ -151,33 +148,16 @@ begin
     AboutCaption := 'Upgrading {#AppName} to v' + NEW_VERSION;
     AboutSubCaption := 'Developed by {#AppPublisher} | Upgrade from v' + OldVer;
     DescText := 'You are upgrading from v' + OldVer + ' to v' + NEW_VERSION + '.' + #13#10 + #13#10 +
-                'What''s new in v' + NEW_VERSION + ':' + #13#10 +
-                ' • All existing settings and wallet config are preserved' + #13#10 +
-                ' • Improved stability and performance' + #13#10 +
-                ' • Updated on-chain transaction logic' + #13#10 +
-                ' • UI refresh and bug fixes' + #13#10 + #13#10 +
-                'Current features:' + #13#10 +
-                ' • View all withdrawal requests with real-time status' + #13#10 +
-                ' • Approve or reject pending withdrawals' + #13#10 +
-                ' • Automatic BH / USDT token transfers on Polygon & BSC' + #13#10 +
-                ' • Multi-network wallet balance viewer (Polygon 137 + BSC 56)' + #13#10 +
-                ' • Double-payment protection' + #13#10 +
-                ' • Encrypted private-key storage' + #13#10 +
-                ' • Simulation mode';
+                'What''s new:' + #13#10 +
+                ' • Settings and wallet preserved' + #13#10 +
+                ' • Improved stability & performance' + #13#10 +
+                ' • UI refresh and bug fixes';
   end
   else
   begin
     AboutCaption := 'Welcome to {#AppName}';
     AboutSubCaption := 'Developed by {#AppPublisher}';
-    DescText := 'A professional admin tool for managing on-chain withdrawal requests.' + #13#10 + #13#10 +
-                'Features:' + #13#10 +
-                ' • View all withdrawal requests with real-time status' + #13#10 +
-                ' • Approve or reject pending withdrawals' + #13#10 +
-                ' • Automatic BH / USDT token transfers on Polygon & BSC' + #13#10 +
-                ' • Multi-network wallet balance viewer' + #13#10 +
-                ' • Double-payment protection' + #13#10 +
-                ' • Encrypted private-key storage' + #13#10 +
-                ' • Simulation mode';
+    DescText := 'A professional admin tool for managing on-chain withdrawal requests.';
   end;
 
   PageAbout := CreateCustomPage(wpWelcome, AboutCaption, AboutSubCaption);
@@ -195,7 +175,6 @@ begin
     AutoSize := True;
   end;
 
-  // Developer
   LblDevBy := TLabel.Create(PageAbout);
   with LblDevBy do begin
     Parent := PageAbout.Surface;
@@ -207,7 +186,6 @@ begin
     AutoSize := True;
   end;
 
-  // Version Badge
   LblVersion := TLabel.Create(PageAbout);
   with LblVersion do begin
     Parent := PageAbout.Surface;
@@ -223,7 +201,6 @@ begin
     AutoSize := True;
   end;
 
-  // Description
   LblDesc := TLabel.Create(PageAbout);
   with LblDesc do begin
     Parent := PageAbout.Surface;
@@ -237,7 +214,7 @@ begin
     WordWrap := True;
   end;
 
-  // Social Links
+  // Social
   LblSocialTitle := TLabel.Create(PageAbout);
   with LblSocialTitle do begin
     Parent := PageAbout.Surface;
@@ -275,18 +252,18 @@ begin
 
   // Wallet Page
   PageWallet := CreateCustomPage(PageAbout.ID, 'Wallet Setup',
-    'Pre-configure your sending wallet (you can change this later)');
+    'Pre-configure your sending wallet (changeable later)');
 
   LblWalletInfo := TLabel.Create(PageWallet);
   with LblWalletInfo do begin
     Parent := PageWallet.Surface;
     if IsUpgradeMode then
-      Caption := 'You are upgrading an existing installation.' + #13#10#13#10 +
-                 'Your wallet settings are already saved.' + #13#10#13#10 +
-                 'No changes needed here — click Next.'
+      Caption := 'You are upgrading.' + #13#10#13#10 +
+                 'Your existing wallet settings will be preserved.' + #13#10#13#10 +
+                 'Click Next to continue.'
     else
-      Caption := 'Enter the wallet address that will send USDT / BH tokens.' + #13#10 +
-                 'This wallet must hold gas + tokens for withdrawals.';
+      Caption := 'Enter the wallet address that will send tokens.' + #13#10 +
+                 'This wallet needs gas + sufficient tokens.';
     Font.Size := 9;
     Left := 0; Top := 0;
     Width := 460; Height := 100;
@@ -306,6 +283,7 @@ begin
   EdtFromAddr := TEdit.Create(PageWallet);
   with EdtFromAddr do begin
     Parent := PageWallet.Surface;
+    Text := '';
     Left := 0; Top := 132; Width := 460;
     Font.Name := 'Consolas'; Font.Size := 9;
     Visible := not IsUpgradeMode;
@@ -316,11 +294,9 @@ begin
   with LblPKNote do begin
     Parent := PageWallet.Surface;
     if IsUpgradeMode then
-      Caption := '✔ Upgrade preserves your encrypted private key.' + #13#10 +
-                 'You will NOT need to re-enter it.'
+      Caption := '✔ Your encrypted private key is preserved.'
     else
-      Caption := '⚠ PRIVATE KEY is NOT entered here.' + #13#10 +
-                 'You will set it securely inside the app after installation.';
+      Caption := '⚠ PRIVATE KEY will be entered securely inside the app.';
     Font.Size := 9;
     Font.Color := clLime;
     Left := 0; Top := 172;
@@ -398,8 +374,9 @@ begin
   begin
     if (Length(EdtFromAddr.Text) > 0) and (Length(EdtFromAddr.Text) < 42) then
     begin
-      MsgBox('Wallet address looks too short. A valid Ethereum/Polygon address starts with "0x" and is 42 characters long.' + #13#10#13#10 +
-             'You can leave it blank and set it later.', mbInformation, MB_OK);
+      MsgBox('Wallet address looks too short.' + #13#10 +
+             'Valid address starts with "0x" and is 42 characters.' + #13#10#13#10 +
+             'You can leave it blank and set later.', mbInformation, MB_OK);
     end;
   end;
 end;
