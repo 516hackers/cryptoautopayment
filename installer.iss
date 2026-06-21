@@ -247,7 +247,7 @@ begin
     Caption   := '{#AppName}  v' + NEW_VERSION;
     Font.Size := 18;
     Font.Style:= [fsBold];
-    Font.Color:= $00237E1A;
+    Font.Color:= clGreen;
     Left      := 0;
     Top       := 0;
     AutoSize  := True;
@@ -260,7 +260,7 @@ begin
     Parent    := PageAbout.Surface;
     Caption   := 'Developed by {#AppPublisher}';
     Font.Size := 10;
-    Font.Color:= $00555555;
+    Font.Color:= clGray;
     Left      := 0;
     Top       := 34;
     AutoSize  := True;
@@ -278,9 +278,9 @@ begin
     Font.Size := 9;
     Font.Style:= [fsBold];
     if IsUpgradeMode then
-      Font.Color:= $001B6BB5   // blue for upgrade
+      Font.Color:= clBlue
     else
-      Font.Color:= $00237E1A;  // green for new install
+      Font.Color:= clGreen;
     Left      := 0;
     Top       := 56;
     AutoSize  := True;
@@ -319,7 +319,7 @@ begin
   begin
     Parent     := PageAbout.Surface;
     Caption    := '  Facebook: facebook.com/ayamilcoders';
-    Font.Color := $00FF0000;  // Blue (RGB: 0, 0, 255)
+    Font.Color := clBlue;
     Font.Style := [fsUnderline];
     Cursor     := crHand;
     Left       := 0;
@@ -333,7 +333,7 @@ begin
   begin
     Parent     := PageAbout.Surface;
     Caption    := '  Instagram: instagram.com/ayamilcoders';
-    Font.Color := $00A01CC5; // Purple color
+    Font.Color := clPurple;
     Font.Style := [fsUnderline];
     Cursor     := crHand;
     Left       := 0;
@@ -425,11 +425,10 @@ begin
         'You can skip this page — the wallet address can also be set' + #13#10 +
         'in Wallet & API Settings after the app opens.';
     Font.Size := 9;
-    // FIX: Use ColorFromRGB() which IS available in Inno Setup
     if IsUpgradeMode then
-      Font.Color := ColorFromRGB(0, 255, 0)   // Green
+      Font.Color := clGreen
     else
-      Font.Color := ColorFromRGB(0, 255, 0);  // Green
+      Font.Color := clGreen;
     Left     := 0;
     Top      := 172;
     Width    := 460;
@@ -437,7 +436,7 @@ begin
     AutoSize := False;
     WordWrap := True;
   end;
-end;  // <-- This properly closes InitializeWizard
+end;
 
 // ── Write initial config (fresh install only) ─────────────────────────
 procedure WriteInitialConfig(const FromAddress: string);
