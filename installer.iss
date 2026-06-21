@@ -148,10 +148,7 @@ begin
     AboutCaption := 'Upgrading {#AppName} to v' + NEW_VERSION;
     AboutSubCaption := 'Developed by {#AppPublisher} | Upgrade from v' + OldVer;
     DescText := 'You are upgrading from v' + OldVer + ' to v' + NEW_VERSION + '.' + #13#10 + #13#10 +
-                'What''s new:' + #13#10 +
-                ' • Settings and wallet preserved' + #13#10 +
-                ' • Improved stability & performance' + #13#10 +
-                ' • UI refresh and bug fixes';
+                'Settings and wallet config are preserved.';
   end
   else
   begin
@@ -175,6 +172,7 @@ begin
     AutoSize := True;
   end;
 
+  // Developer
   LblDevBy := TLabel.Create(PageAbout);
   with LblDevBy do begin
     Parent := PageAbout.Surface;
@@ -186,6 +184,7 @@ begin
     AutoSize := True;
   end;
 
+  // Version Badge
   LblVersion := TLabel.Create(PageAbout);
   with LblVersion do begin
     Parent := PageAbout.Surface;
@@ -201,6 +200,7 @@ begin
     AutoSize := True;
   end;
 
+  // Description
   LblDesc := TLabel.Create(PageAbout);
   with LblDesc do begin
     Parent := PageAbout.Surface;
@@ -214,7 +214,7 @@ begin
     WordWrap := True;
   end;
 
-  // Social
+  // Social Links
   LblSocialTitle := TLabel.Create(PageAbout);
   with LblSocialTitle do begin
     Parent := PageAbout.Surface;
@@ -250,20 +250,20 @@ begin
     OnClick := @OnInstagramClick;
   end;
 
-  // Wallet Page
+  // Wallet Setup Page
   PageWallet := CreateCustomPage(PageAbout.ID, 'Wallet Setup',
-    'Pre-configure your sending wallet (changeable later)');
+    'Pre-configure your sending wallet (you can change later)');
 
   LblWalletInfo := TLabel.Create(PageWallet);
   with LblWalletInfo do begin
     Parent := PageWallet.Surface;
     if IsUpgradeMode then
-      Caption := 'You are upgrading.' + #13#10#13#10 +
-                 'Your existing wallet settings will be preserved.' + #13#10#13#10 +
+      Caption := 'You are upgrading an existing installation.' + #13#10#13#10 +
+                 'Your wallet settings are already saved.' + #13#10#13#10 +
                  'Click Next to continue.'
     else
-      Caption := 'Enter the wallet address that will send tokens.' + #13#10 +
-                 'This wallet needs gas + sufficient tokens.';
+      Caption := 'Enter the wallet address that will send USDT / BH tokens.' + #13#10 +
+                 'This wallet must hold gas + sufficient tokens.';
     Font.Size := 9;
     Left := 0; Top := 0;
     Width := 460; Height := 100;
@@ -274,8 +274,10 @@ begin
   with LblFromAddr do begin
     Parent := PageWallet.Surface;
     Caption := 'From Wallet Address:';
-    Font.Size := 9; Font.Style := [fsBold];
-    Left := 0; Top := 110;
+    Font.Size := 9;
+    Font.Style := [fsBold];
+    Left := 0;
+    Top := 110;
     AutoSize := True;
     Visible := not IsUpgradeMode;
   end;
@@ -284,8 +286,11 @@ begin
   with EdtFromAddr do begin
     Parent := PageWallet.Surface;
     Text := '';
-    Left := 0; Top := 132; Width := 460;
-    Font.Name := 'Consolas'; Font.Size := 9;
+    Left := 0;
+    Top := 132;
+    Width := 460;
+    Font.Name := 'Consolas';
+    Font.Size := 9;
     Visible := not IsUpgradeMode;
     Enabled := not IsUpgradeMode;
   end;
@@ -294,14 +299,17 @@ begin
   with LblPKNote do begin
     Parent := PageWallet.Surface;
     if IsUpgradeMode then
-      Caption := '✔ Your encrypted private key is preserved.'
+      Caption := '✔ Upgrade preserves your encrypted private key.'
     else
-      Caption := '⚠ PRIVATE KEY will be entered securely inside the app.';
+      Caption := '⚠ PRIVATE KEY is NOT entered here. You will set it inside the app.';
     Font.Size := 9;
     Font.Color := clLime;
-    Left := 0; Top := 172;
-    Width := 460; Height := 140;
-    AutoSize := False; WordWrap := True;
+    Left := 0;
+    Top := 172;
+    Width := 460;
+    Height := 140;
+    AutoSize := False;
+    WordWrap := True;
   end;
 end;
 
@@ -375,8 +383,8 @@ begin
     if (Length(EdtFromAddr.Text) > 0) and (Length(EdtFromAddr.Text) < 42) then
     begin
       MsgBox('Wallet address looks too short.' + #13#10 +
-             'Valid address starts with "0x" and is 42 characters.' + #13#10#13#10 +
-             'You can leave it blank and set later.', mbInformation, MB_OK);
+             'A valid address starts with "0x" and is 42 characters long.' + #13#10#13#10 +
+             'You can leave it blank.', mbInformation, MB_OK);
     end;
   end;
 end;
