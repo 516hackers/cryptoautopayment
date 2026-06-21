@@ -1,4 +1,4 @@
-name: Build — EXE + Installer
+name: Build — EXE + Installer  v4.0
 
 on:
   push:
@@ -17,19 +17,31 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      # ── 1. Checkout ──────────────────────────────────────────────────
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify required assets exist
+      # ── 2. Verify required assets ────────────────────────────────────
+      - name: Verify required assets
         run: |
-          foreach ($f in @("ayamil.jpg", "imh.png")) {
-            if (!(Test-Path $f)) {
-              Write-Error "Required asset '$f' not found in repo root!"
-              exit 1
-            }
+          $missing = @()
+          foreach ($f in @("ayamil.jpg", "main.py", "requirements.txt", "installer.iss")) {
+            if (!(Test-Path $f)) { $missing += $f }
           }
-          Write-Host "All required assets found."
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing required files: $($missing -join ', ')"
+            exit 1
+          }
+          Write-Host "All required files present."
 
+          # imh.png is optional (for custom icon)
+          if (Test-Path "imh.png") {
+            Write-Host "imh.png found — will use as app icon."
+          } else {
+            Write-Warning "imh.png not found — EXE will use default Python icon."
+          }
+
+      # ── 3. Python setup ──────────────────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -41,125 +53,159 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller pillow
 
-      - name: Convert PNG to ICO for executable icon
+      # ── 4. Convert imh.png to .ico (optional, skipped if missing) ────
+      - name: Convert imh.png to ICO
         run: |
-          python -c "
+          if (Test-Path "imh.png") {
+            python -c "
           from PIL import Image
-          import sys
-          
-          try:
-              img = Image.open('imh.png')
-              # Save as ICO with multiple sizes for Windows compatibility
-              img.save('imh.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
-              print('SUCCESS: Created imh.ico')
-          except Exception as e:
-              print(f'Error creating ICO: {e}', file=sys.stderr)
-              sys.exit(1)
+          img = Image.open('imh.png')
+          img.save('imh.ico', format='ICO',
+                   sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
+          print('Created imh.ico')
           "
+          } else {
+            Write-Warning "imh.png not found — skipping ICO generation."
+          }
 
+      # ── 5. Build EXE ─────────────────────────────────────────────────
       - name: Build EXE with PyInstaller
         run: |
-          pyinstaller --onefile --noconsole --name InfinityMetaHub `
-            --icon imh.ico `
-            --add-data "imh.png;." `
-            --add-data "ayamil.jpg;." `
-            --copy-metadata py_ecc `
-            --copy-metadata web3 `
-            --copy-metadata eth-account `
-            --copy-metadata eth-keyfile `
-            --copy-metadata eth-keys `
-            --copy-metadata eth-utils `
-            --copy-metadata eth-typing `
-            --copy-metadata eth-abi `
-            --copy-metadata eth-rlp `
-            --copy-metadata hexbytes `
-            --copy-metadata rlp `
-            --copy-metadata pycryptodome `
-            main.py
+          $args = @(
+            "--onefile",
+            "--noconsole",
+            "--name", "InfinityMetaHub",
+            "--copy-metadata", "py_ecc",
+            "--copy-metadata", "web3",
+            "--copy-metadata", "eth-account",
+            "--copy-metadata", "eth-keyfile",
+            "--copy-metadata", "eth-keys",
+            "--copy-metadata", "eth-utils",
+            "--copy-metadata", "eth-typing",
+            "--copy-metadata", "eth-abi",
+            "--copy-metadata", "eth-rlp",
+            "--copy-metadata", "hexbytes",
+            "--copy-metadata", "rlp",
+            "--copy-metadata", "pycryptodome"
+          )
 
-      - name: Verify EXE was created
+          if (Test-Path "imh.ico") {
+            $args += "--icon"
+            $args += "imh.ico"
+          }
+          if (Test-Path "imh.png") {
+            $args += "--add-data"
+            $args += "imh.png;."
+          }
+          if (Test-Path "ayamil.jpg") {
+            $args += "--add-data"
+            $args += "ayamil.jpg;."
+          }
+
+          $args += "main.py"
+          pyinstaller @args
+
+      - name: Verify EXE
         run: |
           if (!(Test-Path "dist\InfinityMetaHub.exe")) {
-            Write-Error "EXE not found!"
+            Write-Error "EXE not found after build!"
             exit 1
           }
-          $size = (Get-Item "dist\InfinityMetaHub.exe").length / 1MB
-          Write-Host "SUCCESS: EXE created! Size: $([math]::Round($size,1)) MB"
+          $mb = [math]::Round((Get-Item "dist\InfinityMetaHub.exe").Length / 1MB, 1)
+          Write-Host "EXE created: $mb MB"
 
-      - name: Install Inno Setup 6
-        run: choco install innosetup -y --no-progress --ignore-checksums
-
-      - name: Create installer output directory
-        run: mkdir dist_installer -ErrorAction SilentlyContinue
-
-      - name: Prepare wizard images (ayamil.jpg -> BMP)
-        run: |
-          $pythonScript = @"
-          import sys
-          from pathlib import Path
-          
-          try:
-              from PIL import Image
-              
-              src = Path("ayamil.jpg")
-              if not src.exists():
-                  raise FileNotFoundError(f"{src} not found in repo root")
-              
-              img = Image.open(src).convert("RGBA")
-              BG_BLUE = (30, 90, 200)
-              
-              # Banner: 164x314
-              W, H = 164, 314
-              banner = Image.new("RGB", (W, H), BG_BLUE)
-              logo_w = W - 10
-              logo_resized = img.resize((logo_w, logo_w), Image.Resampling.LANCZOS)
-              banner.paste(logo_resized, (5, (H - logo_w) // 2), logo_resized)
-              banner.save("ayamil_banner.bmp", format="BMP")
-              print("SUCCESS: Created ayamil_banner.bmp (164x314)")
-              
-              # Small: 55x58
-              small_bg = Image.new("RGB", (55, 58), BG_BLUE)
-              small_img = img.resize((48, 48), Image.Resampling.LANCZOS)
-              small_bg.paste(small_img, (3, 5), small_img)
-              small_bg.save("ayamil_small.bmp", format="BMP")
-              print("SUCCESS: Created ayamil_small.bmp (55x58)")
-              
-          except Exception as e:
-              print(f"ERROR: {e}", file=sys.stderr)
-              sys.exit(1)
-          "@
-          $pythonScript | python -
-
-      - name: Copy ICO file for installer
-        run: copy imh.ico dist_installer\
-
-      - name: Build Installer with Inno Setup
+      # ── 6. Inno Setup ────────────────────────────────────────────────
+      - name: Install / confirm Inno Setup 6
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc installer.iss
-          if ($LASTEXITCODE -ne 0) { 
-            Write-Error "Inno Setup compilation failed!"
-            exit $LASTEXITCODE 
+          if (Test-Path $iscc) {
+            Write-Host "Inno Setup already present at $iscc"
+          } else {
+            choco install innosetup -y --no-progress
           }
 
-      - name: Verify installer was created
+      - name: Create installer output directory
+        run: New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
+
+      # ── 7. Convert ayamil.jpg → BMP wizard images ────────────────────
+      - name: Prepare wizard images
         run: |
-          $installer = Get-ChildItem "dist_installer\*.exe" | Where-Object { $_.Name -notlike "*.ico" } | Select-Object -First 1
-          if (!$installer) { 
-            Write-Error "Installer not found!"; 
-            exit 1 
-          }
-          $size = $installer.Length / 1MB
-          Write-Host "SUCCESS: Installer created: $($installer.Name) ($([math]::Round($size,1)) MB)"
+          python - << 'PYEOF'
+          from PIL import Image
+          from pathlib import Path
+          import sys
 
+          src = Path("ayamil.jpg")
+          if not src.exists():
+              print("ERROR: ayamil.jpg not found", file=sys.stderr)
+              sys.exit(1)
+
+          img = Image.open(src).convert("RGBA")
+          BG  = (26, 35, 126)   # #1A237E — matching the app footer colour
+
+          # Banner: 164 x 314  (Inno Setup left-side image)
+          W, H = 164, 314
+          banner = Image.new("RGB", (W, H), BG)
+          logo_size = W - 10
+          logo = img.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+          banner.paste(logo, (5, (H - logo_size) // 2), logo)
+          banner.save("ayamil_banner.bmp", format="BMP")
+          print("Created ayamil_banner.bmp (164x314)")
+
+          # Small: 55 x 58  (Inno Setup top-right corner)
+          small_bg  = Image.new("RGB", (55, 58), BG)
+          small_img = img.resize((48, 48), Image.Resampling.LANCZOS)
+          small_bg.paste(small_img, (3, 5), small_img)
+          small_bg.save("ayamil_small.bmp", format="BMP")
+          print("Created ayamil_small.bmp (55x58)")
+          PYEOF
+
+      # ── 8. Copy icon for installer to reference ───────────────────────
+      - name: Copy ICO for installer
+        run: |
+          if (Test-Path "imh.ico") {
+            Copy-Item "imh.ico" "dist_installer\imh.ico" -Force
+          } else {
+            # Create a minimal placeholder so installer.iss doesn't error
+            Write-Warning "imh.ico not found — creating placeholder"
+            python -c "
+          from PIL import Image
+          img = Image.new('RGB', (16, 16), (26, 35, 126))
+          img.save('imh.ico', format='ICO')
+          "
+          }
+
+      # ── 9. Build installer ────────────────────────────────────────────
+      - name: Build installer with Inno Setup
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          Write-Host "Running: $iscc installer.iss"
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Inno Setup build failed (exit $LASTEXITCODE)"
+            exit $LASTEXITCODE
+          }
+
+      - name: Verify installer output
+        run: |
+          $exe = Get-ChildItem "dist_installer\InfinityMetaHub_Setup_*.exe" |
+                 Select-Object -First 1
+          if (!$exe) {
+            Write-Error "Installer EXE not found in dist_installer\"
+            exit 1
+          }
+          $mb = [math]::Round($exe.Length / 1MB, 1)
+          Write-Host "Installer: $($exe.Name)  ($mb MB)"
+
+      # ── 10. Upload artifacts ─────────────────────────────────────────
       - name: Upload standalone EXE
         uses: actions/upload-artifact@v4
         with:
-          name: InfinityMetaHub-EXE-only
+          name: InfinityMetaHub-v4.0-EXE
           path: dist\InfinityMetaHub.exe
 
-      - name: Upload Windows Installer (Setup)
+      - name: Upload Windows Setup Installer
         uses: actions/upload-artifact@v4
         with:
-          name: InfinityMetaHub-Setup-Installer-v4.0
-          path: dist_installer\*.exe
+          name: InfinityMetaHub-v4.0-Setup
+          path: dist_installer\InfinityMetaHub_Setup_*.exe
