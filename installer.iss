@@ -313,7 +313,8 @@ begin
     Font.Color := $00237E1A;
     Left       := 0;
     Top        := 0;
-    AutoSize   := True;
+    Width      := 460;
+    Height     := 30;
   end;
 
   // Version info - show if update
@@ -328,7 +329,8 @@ begin
       Font.Color := $000000FF; // highlight color for update
       Left       := 0;
       Top        := 36;
-      AutoSize   := True;
+      Width      := 460;
+      Height     := 20;
     end;
   end
   else
@@ -342,7 +344,8 @@ begin
       Font.Color := $00555555;
       Left       := 0;
       Top        := 36;
-      AutoSize   := True;
+      Width      := 460;
+      Height     := 20;
     end;
   end;
 
@@ -369,7 +372,6 @@ begin
     Left      := 0;
     Top       := 62;
     Width     := 440;
-    AutoSize  := False;
     Height    := 220;
     WordWrap  := True;
   end;
@@ -384,7 +386,8 @@ begin
     Font.Style := [fsBold];
     Left       := 0;
     Top        := 290;
-    AutoSize   := True;
+    Width      := 200;
+    Height     := 20;
   end;
 
   LblFacebook := TLabel.Create(PageAbout);
@@ -397,7 +400,8 @@ begin
     Cursor     := crHand;
     Left       := 0;
     Top        := 314;
-    AutoSize   := True;
+    Width      := 300;
+    Height     := 20;
     OnClick    := @OnFacebookClick;
   end;
 
@@ -411,7 +415,8 @@ begin
     Cursor     := crHand;
     Left       := 0;
     Top        := 340;
-    AutoSize   := True;
+    Width      := 300;
+    Height     := 20;
     OnClick    := @OnInstagramClick;
   end;
 
@@ -441,7 +446,6 @@ begin
       Top       := 0;
       Width     := 460;
       Height    := 80;
-      AutoSize  := False;
       WordWrap  := True;
     end;
 
@@ -454,7 +458,8 @@ begin
       Font.Style := [fsBold];
       Left       := 0;
       Top        := 92;
-      AutoSize   := True;
+      Width      := 150;
+      Height     := 20;
     end;
 
     EdtFromAddr := TEdit.Create(PageWallet);
@@ -486,7 +491,6 @@ begin
       Top        := 154;
       Width      := 460;
       Height     := 140;
-      AutoSize   := False;
       WordWrap   := True;
     end;
   end
@@ -509,7 +513,8 @@ begin
       Font.Style := [fsBold];
       Left       := 0;
       Top        := 0;
-      AutoSize   := True;
+      Width      := 460;
+      Height     := 40;
     end;
 
     LblWhatsNewTitle := TLabel.Create(PageUpdateOptions);
@@ -521,7 +526,8 @@ begin
       Font.Style := [fsBold];
       Left       := 0;
       Top        := 46;
-      AutoSize   := True;
+      Width      := 200;
+      Height     := 20;
     end;
 
     LblWhatsNew := TLabel.Create(PageUpdateOptions);
@@ -537,7 +543,6 @@ begin
       Top       := 68;
       Width     := 460;
       Height    := 60;
-      AutoSize  := False;
       WordWrap  := True;
     end;
 
@@ -550,7 +555,8 @@ begin
       Font.Style := [fsBold];
       Left       := 0;
       Top        := 140;
-      AutoSize   := True;
+      Width      := 200;
+      Height     := 20;
     end;
 
     RbUpdate := TRadioButton.Create(PageUpdateOptions);
@@ -561,7 +567,8 @@ begin
       Font.Size := 9;
       Left      := 0;
       Top       := 164;
-      AutoSize  := True;
+      Width     := 460;
+      Height    := 20;
       Checked   := True;
       OnClick   := @OnChooseUpdate;
     end;
@@ -574,7 +581,8 @@ begin
       Font.Size := 9;
       Left      := 0;
       Top       := 190;
-      AutoSize  := True;
+      Width     := 460;
+      Height    := 20;
       OnClick   := @OnChooseRepair;
     end;
 
@@ -586,7 +594,8 @@ begin
       Font.Size := 9;
       Left      := 0;
       Top       := 216;
-      AutoSize  := True;
+      Width     := 460;
+      Height    := 20;
       OnClick   := @OnChooseUninstallFirst;
     end;
   end;
