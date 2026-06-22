@@ -46,7 +46,7 @@ jobs:
           python -c "
           from PIL import Image
           import sys
-          
+
           try:
               img = Image.open('imh.png')
               # Save as ICO with multiple sizes for Windows compatibility
@@ -97,17 +97,17 @@ jobs:
           $pythonScript = @"
           import sys
           from pathlib import Path
-          
+
           try:
               from PIL import Image
-              
+
               src = Path("ayamil.jpg")
               if not src.exists():
                   raise FileNotFoundError(f"{src} not found in repo root")
-              
+
               img = Image.open(src).convert("RGBA")
               BG_BLUE = (30, 90, 200)
-              
+
               # Banner: 164x314
               W, H = 164, 314
               banner = Image.new("RGB", (W, H), BG_BLUE)
@@ -116,14 +116,14 @@ jobs:
               banner.paste(logo_resized, (5, (H - logo_w) // 2), logo_resized)
               banner.save("ayamil_banner.bmp", format="BMP")
               print("SUCCESS: Created ayamil_banner.bmp (164x314)")
-              
+
               # Small: 55x58
               small_bg = Image.new("RGB", (55, 58), BG_BLUE)
               small_img = img.resize((48, 48), Image.Resampling.LANCZOS)
               small_bg.paste(small_img, (3, 5), small_img)
               small_bg.save("ayamil_small.bmp", format="BMP")
               print("SUCCESS: Created ayamil_small.bmp (55x58)")
-              
+
           except Exception as e:
               print(f"ERROR: {e}", file=sys.stderr)
               sys.exit(1)
@@ -137,17 +137,17 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           & $iscc installer.iss
-          if ($LASTEXITCODE -ne 0) { 
+          if ($LASTEXITCODE -ne 0) {
             Write-Error "Inno Setup compilation failed!"
-            exit $LASTEXITCODE 
+            exit $LASTEXITCODE
           }
 
       - name: Verify installer was created
         run: |
           $installer = Get-ChildItem "dist_installer\*.exe" | Where-Object { $_.Name -notlike "*.ico" } | Select-Object -First 1
-          if (!$installer) { 
-            Write-Error "Installer not found!"; 
-            exit 1 
+          if (!$installer) {
+            Write-Error "Installer not found!"
+            exit 1
           }
           $size = $installer.Length / 1MB
           Write-Host "SUCCESS: Installer created: $($installer.Name) ($([math]::Round($size,1)) MB)"
