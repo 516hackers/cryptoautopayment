@@ -93,16 +93,17 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; Flags: no
 
 var
   // Page references
-  PageAbout:  TWizardPage;
-  PageWallet: TWizardPage;
+  PageAbout:         TWizardPage;
+  PageWallet:        TWizardPage;
+  PageUpdateOptions: TWizardPage;
 
   // Controls on the About page
-  LblAppTitle:     TLabel;
-  LblDevBy:        TLabel;
-  LblDesc:         TLabel;
-  LblSocialTitle:  TLabel;
-  LblFacebook:     TLabel;
-  LblInstagram:    TLabel;
+  LblAppTitle:    TLabel;
+  LblDevBy:       TLabel;
+  LblDesc:        TLabel;
+  LblSocialTitle: TLabel;
+  LblFacebook:    TLabel;
+  LblInstagram:   TLabel;
 
   // Controls on the Wallet page
   LblWalletInfo: TLabel;
@@ -110,9 +111,19 @@ var
   EdtFromAddr:   TEdit;
   LblPKNote:     TLabel;
 
+  // Controls on the Update Options page
+  LblUpdateVersions: TLabel;
+  LblWhatsNewTitle:  TLabel;
+  LblWhatsNew:       TLabel;
+  LblChooseAction:   TLabel;
+  RbUpdate:          TRadioButton;
+  RbRepair:          TRadioButton;
+  RbUninstallFirst:  TRadioButton;
+
   // Update/Upgrade detection
-  IsUpdate:  Boolean;
-  OldVersion: String;
+  IsUpdate:    Boolean;
+  OldVersion:  String;
+  UpdateChoice: Integer; // 0 = Update (default), 1 = Repair, 2 = Uninstall first
 
 // ── URL opener ────────────────────────────────────────────────────────
 procedure OpenURL(const URL: string);
@@ -130,6 +141,22 @@ end;
 procedure OnInstagramClick(Sender: TObject);
 begin
   OpenURL('https://www.instagram.com/ayamilcoders');
+end;
+
+// ── Update Options radio button handlers ───────────────────────────────
+procedure OnChooseUpdate(Sender: TObject);
+begin
+  UpdateChoice := 0;
+end;
+
+procedure OnChooseRepair(Sender: TObject);
+begin
+  UpdateChoice := 1;
+end;
+
+procedure OnChooseUninstallFirst(Sender: TObject);
+begin
+  UpdateChoice := 2;
 end;
 
 // ── Detect if this is an update/upgrade ────────────────────────────────
@@ -160,6 +187,94 @@ begin
   end;
 end;
 
+// ── Locate the previous version's uninstaller ──────────────────────────
+function GetPreviousUninstallString(): String;
+var
+  UninstallKey: String;
+  US:           String;
+begin
+  Result := '';
+  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
+                   '{#SetupSetting("AppId")}' + '_is1';
+
+  if RegQueryStringValue(HKLM, UninstallKey, 'UninstallString', US) then
+    Result := US
+  else if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', US) then
+    Result := US;
+end;
+
+// ── Run the previous version's uninstaller silently ────────────────────
+function UninstallPreviousVersion(): Boolean;
+var
+  RawCmd, Exe: String;
+  QuotePos:    Integer;
+  ResultCode:  Integer;
+begin
+  Result := False;
+  RawCmd := GetPreviousUninstallString();
+
+  if RawCmd = '' then
+  begin
+    MsgBox('Could not find the previous version''s uninstaller in the registry.' + #13#10 +
+           'Setup will continue as a normal update instead (existing settings will be kept).',
+           mbInformation, MB_OK);
+    UpdateChoice := 0;
+    Result := True;
+    Exit;
+  end;
+
+  // Strip surrounding quotes from the registry UninstallString
+  Exe := RawCmd;
+  if (Length(Exe) > 0) and (Exe[1] = '"') then
+  begin
+    Exe := Copy(Exe, 2, Length(Exe) - 1);
+    QuotePos := Pos('"', Exe);
+    if QuotePos > 0 then
+      Exe := Copy(Exe, 1, QuotePos - 1);
+  end;
+
+  if not FileExists(Exe) then
+  begin
+    MsgBox('The previous uninstaller could not be found on disk:' + #13#10 + Exe + #13#10#13#10 +
+           'Setup will continue as a normal update instead (existing settings will be kept).',
+           mbInformation, MB_OK);
+    UpdateChoice := 0;
+    Result := True;
+    Exit;
+  end;
+
+  if not Exec(Exe, '/VERYSILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_SHOW,
+              ewWaitUntilTerminated, ResultCode) then
+  begin
+    MsgBox('Could not launch the previous uninstaller.' + #13#10 +
+           'Setup will continue as a normal update instead (existing settings will be kept).',
+           mbError, MB_OK);
+    UpdateChoice := 0;
+    Result := True;
+    Exit;
+  end;
+
+  Result := True;
+end;
+
+// ── Reset wallet/API config (used by Repair and Uninstall-first) ──────
+procedure ResetConfigForRepair();
+var
+  ConfigDir, ConfigPath, PendingPath: String;
+begin
+  ConfigDir   := ExpandConstant('{userappdata}') + '\.withdrawal_admin';
+  ConfigPath  := ConfigDir + '\config.json';
+  PendingPath := ConfigDir + '\pending_tx.json';
+
+  if FileExists(ConfigPath) then
+    DeleteFile(ConfigPath);
+  if FileExists(PendingPath) then
+    DeleteFile(PendingPath);
+
+  Log('Repair/reinstall selected: wallet & API config reset ' +
+      '(transaction history and security logs were kept).');
+end;
+
 // ── Build wizard pages ───────────────────────────────────────────────
 procedure InitializeWizard;
 var
@@ -168,6 +283,7 @@ var
 begin
   // Check if this is an update
   IsUpdate := IsUpgradeInstalled();
+  UpdateChoice := 0;
 
   // Customize welcome page based on update status
   if IsUpdate then
@@ -206,13 +322,13 @@ begin
     LblDevBy := TLabel.Create(PageAbout);
     with LblDevBy do
     begin
-      Parent    := PageAbout.Surface;
-      Caption   := 'Upgrading from v' + OldVersion + ' to v{#AppVersion}';
-      Font.Size := 10;
+      Parent     := PageAbout.Surface;
+      Caption    := 'Upgrading from v' + OldVersion + ' to v{#AppVersion}';
+      Font.Size  := 10;
       Font.Color := $000000FF; // highlight color for update
-      Left      := 0;
-      Top       := 36;
-      AutoSize  := True;
+      Left       := 0;
+      Top        := 36;
+      AutoSize   := True;
     end;
   end
   else
@@ -220,13 +336,13 @@ begin
     LblDevBy := TLabel.Create(PageAbout);
     with LblDevBy do
     begin
-      Parent    := PageAbout.Surface;
-      Caption   := 'Developed by {#AppPublisher}';
-      Font.Size := 10;
+      Parent     := PageAbout.Surface;
+      Caption    := 'Developed by {#AppPublisher}';
+      Font.Size  := 10;
       Font.Color := $00555555;
-      Left      := 0;
-      Top       := 36;
-      AutoSize  := True;
+      Left       := 0;
+      Top        := 36;
+      AutoSize   := True;
     end;
   end;
 
@@ -300,7 +416,8 @@ begin
   end;
 
   // ────────────────────────────────────────────────────────────────
-  // PAGE 2 — Wallet Setup (skipped during updates)
+  // PAGE 2 — Wallet Setup (fresh installs only)
+  //          OR Update Options (updates only)
   // ────────────────────────────────────────────────────────────────
   if not IsUpdate then
   begin
@@ -372,6 +489,106 @@ begin
       AutoSize   := False;
       WordWrap   := True;
     end;
+  end
+  else
+  begin
+    PageUpdateOptions := CreateCustomPage(
+      PageAbout.ID,
+      'Update Options',
+      'An existing installation of {#AppName} was found on this computer'
+    );
+
+    LblUpdateVersions := TLabel.Create(PageUpdateOptions);
+    with LblUpdateVersions do
+    begin
+      Parent     := PageUpdateOptions.Surface;
+      Caption    := 'Installed version:   v' + OldVersion + #13#10 +
+                     'New version:         v{#AppVersion}';
+      Font.Name  := 'Consolas';
+      Font.Size  := 10;
+      Font.Style := [fsBold];
+      Left       := 0;
+      Top        := 0;
+      AutoSize   := True;
+    end;
+
+    LblWhatsNewTitle := TLabel.Create(PageUpdateOptions);
+    with LblWhatsNewTitle do
+    begin
+      Parent     := PageUpdateOptions.Surface;
+      Caption    := 'What''s New in v{#AppVersion}:';
+      Font.Size  := 9;
+      Font.Style := [fsBold];
+      Left       := 0;
+      Top        := 46;
+      AutoSize   := True;
+    end;
+
+    LblWhatsNew := TLabel.Create(PageUpdateOptions);
+    with LblWhatsNew do
+    begin
+      Parent  := PageUpdateOptions.Surface;
+      Caption :=
+        ' •  Improved performance and stability' + #13#10 +
+        ' •  Enhanced security features' + #13#10 +
+        ' •  Better error handling and logging';
+      Font.Size := 9;
+      Left      := 0;
+      Top       := 68;
+      Width     := 460;
+      Height    := 60;
+      AutoSize  := False;
+      WordWrap  := True;
+    end;
+
+    LblChooseAction := TLabel.Create(PageUpdateOptions);
+    with LblChooseAction do
+    begin
+      Parent     := PageUpdateOptions.Surface;
+      Caption    := 'What would you like to do?';
+      Font.Size  := 9;
+      Font.Style := [fsBold];
+      Left       := 0;
+      Top        := 140;
+      AutoSize   := True;
+    end;
+
+    RbUpdate := TRadioButton.Create(PageUpdateOptions);
+    with RbUpdate do
+    begin
+      Parent    := PageUpdateOptions.Surface;
+      Caption   := 'Update to v{#AppVersion} (recommended) - keep my settings & history';
+      Font.Size := 9;
+      Left      := 0;
+      Top       := 164;
+      AutoSize  := True;
+      Checked   := True;
+      OnClick   := @OnChooseUpdate;
+    end;
+
+    RbRepair := TRadioButton.Create(PageUpdateOptions);
+    with RbRepair do
+    begin
+      Parent    := PageUpdateOptions.Surface;
+      Caption   := 'Repair / reinstall v{#AppVersion} - reset wallet & API settings to default';
+      Font.Size := 9;
+      Left      := 0;
+      Top       := 190;
+      AutoSize  := True;
+      OnClick   := @OnChooseRepair;
+    end;
+
+    RbUninstallFirst := TRadioButton.Create(PageUpdateOptions);
+    with RbUninstallFirst do
+    begin
+      Parent    := PageUpdateOptions.Surface;
+      Caption   := 'Uninstall the existing version first, then install v{#AppVersion} fresh';
+      Font.Size := 9;
+      Left      := 0;
+      Top       := 216;
+      AutoSize  := True;
+      OnClick   := @OnChooseUninstallFirst;
+    end;
   end;
 end;
 
@@ -428,7 +645,12 @@ begin
   begin
     if IsUpdate then
     begin
-      Log('Performing update to version {#AppVersion}');
+      Log('Performing update to version {#AppVersion} (mode=' + IntToStr(UpdateChoice) + ')');
+
+      // Repair or Uninstall-first both reset wallet/API config to default
+      if (UpdateChoice = 1) or (UpdateChoice = 2) then
+        ResetConfigForRepair();
+
       // If PageWallet doesn't exist (update), use empty string
       if not Assigned(PageWallet) then
         WriteInitialConfig('')
@@ -440,7 +662,7 @@ begin
   end;
 end;
 
-// ── Validation on Next ───────────────────────────────────────────────
+// ── Validation / actions on Next ───────────────────────────────────────
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
@@ -457,9 +679,35 @@ begin
       );
     end;
   end;
+
+  if Assigned(PageUpdateOptions) and IsUpdate and (CurPageID = PageUpdateOptions.ID) then
+  begin
+    case UpdateChoice of
+      1: begin
+           if MsgBox(
+                'Repair will reinstall v{#AppVersion} and RESET your wallet & API settings to default.' + #13#10 +
+                'Your transaction history and security logs will be kept.' + #13#10 + #13#10 +
+                'Continue?', mbConfirmation, MB_YESNO) <> IDYES then
+             Result := False;
+         end;
+      2: begin
+           if MsgBox(
+                'This will uninstall the currently installed version (v' + OldVersion + ')' + #13#10 +
+                'before installing v{#AppVersion}. Your transaction history and security logs' + #13#10 +
+                'will be kept, but wallet & API settings will be reset to default.' + #13#10 + #13#10 +
+                'Continue?', mbConfirmation, MB_YESNO) = IDYES then
+           begin
+             if not UninstallPreviousVersion() then
+               Result := False;
+           end
+           else
+             Result := False;
+         end;
+    end;
+  end;
 end;
 
-// ── Custom Ready Page message ────────────────────────────────────────
+// ── Custom Ready Page message ──────────────────────────────────────────
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
@@ -469,10 +717,26 @@ begin
 
   if IsUpdate then
   begin
-    S := S + 'This will upgrade Infinity Meta Hub from v' + OldVersion +
-         ' to v{#AppVersion}.' + NewLine;
-    S := S + 'Your existing settings and configurations will be preserved.' + NewLine;
-    S := S + NewLine;
+    case UpdateChoice of
+      0: begin
+           S := S + 'This will update Infinity Meta Hub from v' + OldVersion +
+                ' to v{#AppVersion}.' + NewLine;
+           S := S + 'Your existing settings, wallet, and history will be preserved.' +
+                NewLine + NewLine;
+         end;
+      1: begin
+           S := S + 'This will repair Infinity Meta Hub, reinstalling v{#AppVersion} over v' +
+                OldVersion + '.' + NewLine;
+           S := S + 'Wallet & API settings will be RESET to default. ' +
+                'History and security logs will be kept.' + NewLine + NewLine;
+         end;
+      2: begin
+           S := S + 'The existing v' + OldVersion + ' installation will be removed, ' +
+                'then v{#AppVersion} installed fresh.' + NewLine;
+           S := S + 'Wallet & API settings will be RESET to default. ' +
+                'History and security logs will be kept.' + NewLine + NewLine;
+         end;
+    end;
   end;
 
   if MemoDirInfo <> '' then
@@ -487,12 +751,12 @@ begin
   Result := S;
 end;
 
-// ── Skip pages during upgrade ────────────────────────────────────────
+// ── Skip pages during upgrade ──────────────────────────────────────────
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
 
-  // Skip wallet setup page during updates
+  // Skip wallet setup page during updates (Update Options page replaces it)
   if Assigned(PageWallet) and IsUpdate and (PageID = PageWallet.ID) then
     Result := True;
 end;
