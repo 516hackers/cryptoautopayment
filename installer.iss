@@ -1,15 +1,15 @@
 ; ============================================================
-;  Infinity Meta Hub — Windows Installer
-;  Built with Inno Setup 6
-;  Developed by Ayamil Coders
-;  Version 4.0
+; Infinity Meta Hub — Windows Installer
+; Built with Inno Setup 6
+; Developed by Ayamil Coders
+; Version 4.0
 ; ============================================================
 
-#define AppName      "Infinity Meta Hub"
-#define AppVersion   "4.0.0"
+#define AppName "Infinity Meta Hub"
+#define AppVersion "4.0.1"
 #define AppPublisher "Ayamil Coders"
-#define AppExeName   "InfinityMetaHub.exe"
-#define AppURL       "https://www.facebook.com/ayamilcoders"
+#define AppExeName "InfinityMetaHub.exe"
+#define AppURL "https://www.facebook.com/ayamilcoders"
 
 [Setup]
 ; Use the same AppId to detect previous installations
@@ -29,6 +29,7 @@ AllowNoIcons=yes
 
 ; Wizard images are generated from ayamil.jpg by build.yml
 WizardImageFile=ayamil_banner.bmp
+WizardImageStretch=yes
 WizardSmallImageFile=ayamil_small.bmp
 
 ; Application icon (favicon)
@@ -62,14 +63,11 @@ DisableReadyMemo=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; \
-  Description: "Create a &desktop shortcut"; \
-  GroupDescription: "Shortcuts:"
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
 
 [Files]
 ; Main executable - will overwrite existing
-Source: "dist\InfinityMetaHub.exe"; DestDir: "{app}"; \
-  Flags: ignoreversion; DestName: "{#AppExeName}"
+Source: "dist\InfinityMetaHub.exe"; DestDir: "{app}"; Flags: ignoreversion; DestName: "{#AppExeName}"
 
 ; Logo image - will overwrite existing
 Source: "ayamil.jpg"; DestDir: "{app}"; Flags: ignoreversion
@@ -81,43 +79,40 @@ Source: "imh.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "imh.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#AppName}";                   Filename: "{app}\{#AppExeName}"
-Name: "{group}\Uninstall {#AppName}";         Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}";             Filename: "{app}\{#AppExeName}"; \
-  Tasks: desktopicon
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
+Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; \
-  Description: "Launch {#AppName} now"; \
-  Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; Flags: nowait postinstall skipifsilent
 
 ; ============================================================
-;  Pascal script — custom wizard pages with Update Detection
+; Pascal script — custom wizard pages with Update Detection
 ; ============================================================
 [Code]
 
 var
   // Page references
-  PageAbout:        TWizardPage;
-  PageWallet:       TWizardPage;
+  PageAbout:  TWizardPage;
+  PageWallet: TWizardPage;
 
   // Controls on the About page
-  LblAppTitle:      TLabel;
-  LblDevBy:         TLabel;
-  LblDesc:          TLabel;
-  LblSocialTitle:   TLabel;
-  LblFacebook:      TLabel;
-  LblInstagram:     TLabel;
+  LblAppTitle:     TLabel;
+  LblDevBy:        TLabel;
+  LblDesc:         TLabel;
+  LblSocialTitle:  TLabel;
+  LblFacebook:     TLabel;
+  LblInstagram:    TLabel;
 
   // Controls on the Wallet page
-  LblWalletInfo:    TLabel;
-  LblFromAddr:      TLabel;
-  EdtFromAddr:      TEdit;
-  LblPKNote:        TLabel;
+  LblWalletInfo: TLabel;
+  LblFromAddr:   TLabel;
+  EdtFromAddr:   TEdit;
+  LblPKNote:     TLabel;
 
   // Update/Upgrade detection
-  IsUpdate:         Boolean;
-  OldVersion:       String;
+  IsUpdate:  Boolean;
+  OldVersion: String;
 
 // ── URL opener ────────────────────────────────────────────────────────
 procedure OpenURL(const URL: string);
@@ -137,75 +132,72 @@ begin
   OpenURL('https://www.instagram.com/ayamilcoders');
 end;
 
-// ── Detect if this is an update/upgrade ─────────────────────────────
+// ── Detect if this is an update/upgrade ────────────────────────────────
 function IsUpgradeInstalled(): Boolean;
 var
-  UninstallKey: String;
+  UninstallKey:  String;
   OldVersionStr: String;
 begin
   Result := False;
   OldVersion := '';
-  
-  // Check if the application is already installed
-  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + '{#SetupSetting("AppId")}';
-  
+
+  // Inno Setup stores uninstall info under "<AppId>_is1"
+  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' +
+                   '{#SetupSetting("AppId")}' + '_is1';
+
   if RegKeyExists(HKLM, UninstallKey) or RegKeyExists(HKCU, UninstallKey) then
   begin
     Result := True;
-    
+
     // Try to get the old version
     if RegQueryStringValue(HKLM, UninstallKey, 'DisplayVersion', OldVersionStr) then
       OldVersion := OldVersionStr
     else if RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', OldVersionStr) then
       OldVersion := OldVersionStr;
-      
+
     if OldVersion = '' then
       OldVersion := 'Unknown';
   end;
 end;
 
-// ── Build wizard pages ────────────────────────────────────────────────
+// ── Build wizard pages ───────────────────────────────────────────────
 procedure InitializeWizard;
 var
   WelcomeText: String;
-  SubText: String;
+  SubText:     String;
 begin
   // Check if this is an update
   IsUpdate := IsUpgradeInstalled();
-  
+
   // Customize welcome page based on update status
   if IsUpdate then
   begin
     WelcomeText := 'Upgrading to ' + '{#AppName} v{#AppVersion}';
-    SubText := 'You are upgrading from version ' + OldVersion + ' to v{#AppVersion}';
+    SubText     := 'You are upgrading from version ' + OldVersion + ' to v{#AppVersion}';
   end
   else
   begin
     WelcomeText := 'Welcome to ' + '{#AppName} v{#AppVersion}';
-    SubText := 'Developed by {#AppPublisher}';
+    SubText     := 'Developed by {#AppPublisher}';
   end;
 
-  // ──────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────
   // PAGE 1 — About Ayamil Coders
-  // ──────────────────────────────────────────────────────────────────
-  PageAbout := CreateCustomPage(
-    wpWelcome,
-    WelcomeText,
-    SubText
-  );
+  // ────────────────────────────────────────────────────────────────
+  PageAbout := CreateCustomPage(wpWelcome, WelcomeText, SubText);
 
   // App title
   LblAppTitle := TLabel.Create(PageAbout);
   with LblAppTitle do
   begin
-    Parent    := PageAbout.Surface;
-    Caption   := '{#AppName} v{#AppVersion}';
-    Font.Size := 20;
-    Font.Style:= [fsBold];
-    Font.Color:= $00237E1A;
-    Left := 0;
-    Top  := 0;
-    AutoSize := True;
+    Parent     := PageAbout.Surface;
+    Caption    := '{#AppName} v{#AppVersion}';
+    Font.Size  := 20;
+    Font.Style := [fsBold];
+    Font.Color := $00237E1A;
+    Left       := 0;
+    Top        := 0;
+    AutoSize   := True;
   end;
 
   // Version info - show if update
@@ -217,10 +209,10 @@ begin
       Parent    := PageAbout.Surface;
       Caption   := 'Upgrading from v' + OldVersion + ' to v{#AppVersion}';
       Font.Size := 10;
-      Font.Color:= $000000FF;  // Red color for update
-      Left := 0;
-      Top  := 36;
-      AutoSize := True;
+      Font.Color := $000000FF; // highlight color for update
+      Left      := 0;
+      Top       := 36;
+      AutoSize  := True;
     end;
   end
   else
@@ -231,10 +223,10 @@ begin
       Parent    := PageAbout.Surface;
       Caption   := 'Developed by {#AppPublisher}';
       Font.Size := 10;
-      Font.Color:= $00555555;
-      Left := 0;
-      Top  := 36;
-      AutoSize := True;
+      Font.Color := $00555555;
+      Left      := 0;
+      Top       := 36;
+      AutoSize  := True;
     end;
   end;
 
@@ -242,74 +234,74 @@ begin
   LblDesc := TLabel.Create(PageAbout);
   with LblDesc do
   begin
-    Parent    := PageAbout.Surface;
-    Caption   :=
+    Parent  := PageAbout.Surface;
+    Caption :=
       'A professional admin tool for managing on-chain withdrawal requests.' + #13#10 + #13#10 +
       'Features:' + #13#10 +
-      '  *  View all withdrawal requests with real-time status' + #13#10 +
-      '  *  Approve or reject pending withdrawals' + #13#10 +
-      '  *  Automatic BH / USDT token transfers on Polygon & BSC' + #13#10 +
-      '  *  Multi-network wallet balance viewer (Polygon 137 + BSC 56)' + #13#10 +
-      '  *  Double-payment protection - prevents duplicate on-chain sends' + #13#10 +
-      '  *  Encrypted private-key storage with passphrase' + #13#10 +
-      '  *  Simulation mode for safe testing before going live' + #13#10 + #13#10 +
+      ' •  View all withdrawal requests with real-time status' + #13#10 +
+      ' •  Approve or reject pending withdrawals' + #13#10 +
+      ' •  Automatic BH / USDT token transfers on Polygon & BSC' + #13#10 +
+      ' •  Multi-network wallet balance viewer (Polygon 137 + BSC 56)' + #13#10 +
+      ' •  Double-payment protection - prevents duplicate on-chain sends' + #13#10 +
+      ' •  Encrypted private-key storage with passphrase' + #13#10 +
+      ' •  Simulation mode for safe testing before going live' + #13#10 + #13#10 +
       'Version 4.0 Updates:' + #13#10 +
-      '  *  Improved performance and stability' + #13#10 +
-      '  *  Enhanced security features' + #13#10 +
-      '  *  Better error handling and logging';
+      ' •  Improved performance and stability' + #13#10 +
+      ' •  Enhanced security features' + #13#10 +
+      ' •  Better error handling and logging';
     Font.Size := 9;
-    Left  := 0;
-    Top   := 62;
-    Width := 440;
-    AutoSize := False;
-    Height   := 220;
-    WordWrap := True;
+    Left      := 0;
+    Top       := 62;
+    Width     := 440;
+    AutoSize  := False;
+    Height    := 220;
+    WordWrap  := True;
   end;
 
   // Social media section
   LblSocialTitle := TLabel.Create(PageAbout);
   with LblSocialTitle do
   begin
-    Parent   := PageAbout.Surface;
-    Caption  := 'Follow Ayamil Coders:';
-    Font.Size:= 9;
-    Font.Style:=[fsBold];
-    Left := 0;
-    Top  := 290;
-    AutoSize := True;
+    Parent     := PageAbout.Surface;
+    Caption    := 'Follow Ayamil Coders:';
+    Font.Size  := 9;
+    Font.Style := [fsBold];
+    Left       := 0;
+    Top        := 290;
+    AutoSize   := True;
   end;
 
   LblFacebook := TLabel.Create(PageAbout);
   with LblFacebook do
   begin
     Parent     := PageAbout.Surface;
-    Caption    := '   Facebook:   facebook.com/ayamilcoders';
+    Caption    := ' Facebook: facebook.com/ayamilcoders';
     Font.Color := clBlue;
     Font.Style := [fsUnderline];
     Cursor     := crHand;
-    Left := 0;
-    Top  := 314;
-    AutoSize  := True;
-    OnClick   := @OnFacebookClick;
+    Left       := 0;
+    Top        := 314;
+    AutoSize   := True;
+    OnClick    := @OnFacebookClick;
   end;
 
   LblInstagram := TLabel.Create(PageAbout);
   with LblInstagram do
   begin
     Parent     := PageAbout.Surface;
-    Caption    := '   Instagram:  instagram.com/ayamilcoders';
+    Caption    := ' Instagram: instagram.com/ayamilcoders';
     Font.Color := $00A01CC5;
     Font.Style := [fsUnderline];
     Cursor     := crHand;
-    Left := 0;
-    Top  := 340;
-    AutoSize  := True;
-    OnClick   := @OnInstagramClick;
+    Left       := 0;
+    Top        := 340;
+    AutoSize   := True;
+    OnClick    := @OnInstagramClick;
   end;
 
-  // ──────────────────────────────────────────────────────────────────
-  // PAGE 2 — Wallet Setup (Skip during updates)
-  // ──────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────
+  // PAGE 2 — Wallet Setup (skipped during updates)
+  // ────────────────────────────────────────────────────────────────
   if not IsUpdate then
   begin
     PageWallet := CreateCustomPage(
@@ -321,69 +313,69 @@ begin
     LblWalletInfo := TLabel.Create(PageWallet);
     with LblWalletInfo do
     begin
-      Parent   := PageWallet.Surface;
-      Caption  :=
+      Parent  := PageWallet.Surface;
+      Caption :=
         'Enter the wallet address that will send USDT / BH tokens to customers.' + #13#10 +
         'This wallet must hold:' + #13#10 +
-        '  *  MATIC (for gas fees on Polygon), or BNB (for gas on BSC)' + #13#10 +
-        '  *  Enough BH or USDT tokens to cover the pending withdrawals';
-      Font.Size:= 9;
-      Left  := 0;
-      Top   := 0;
-      Width := 460;
-      Height:= 80;
-      AutoSize := False;
-      WordWrap := True;
+        '  •  MATIC (for gas fees on Polygon), or BNB (for gas on BSC)' + #13#10 +
+        '  •  Enough BH or USDT tokens to cover the pending withdrawals';
+      Font.Size := 9;
+      Left      := 0;
+      Top       := 0;
+      Width     := 460;
+      Height    := 80;
+      AutoSize  := False;
+      WordWrap  := True;
     end;
 
     LblFromAddr := TLabel.Create(PageWallet);
     with LblFromAddr do
     begin
-      Parent   := PageWallet.Surface;
-      Caption  := 'From Wallet Address:';
-      Font.Size:= 9;
-      Font.Style:=[fsBold];
-      Left := 0;
-      Top  := 92;
-      AutoSize := True;
+      Parent     := PageWallet.Surface;
+      Caption    := 'From Wallet Address:';
+      Font.Size  := 9;
+      Font.Style := [fsBold];
+      Left       := 0;
+      Top        := 92;
+      AutoSize   := True;
     end;
 
     EdtFromAddr := TEdit.Create(PageWallet);
     with EdtFromAddr do
     begin
-      Parent   := PageWallet.Surface;
-      Text     := '';
-      Left     := 0;
-      Top      := 116;
-      Width    := 460;
-      Font.Name:= 'Consolas';
-      Font.Size:= 9;
+      Parent    := PageWallet.Surface;
+      Text      := '';
+      Left      := 0;
+      Top       := 116;
+      Width     := 460;
+      Font.Name := 'Consolas';
+      Font.Size := 9;
     end;
 
     LblPKNote := TLabel.Create(PageWallet);
     with LblPKNote do
     begin
-      Parent   := PageWallet.Surface;
-      Caption  :=
+      Parent  := PageWallet.Surface;
+      Caption :=
         'WARNING: Your PRIVATE KEY is NOT entered here.' + #13#10 +
         'You will enter it securely inside the app after installation.' + #13#10 +
         'The app encrypts it with a passphrase of your choice and never' + #13#10 +
         'stores it in plain text.' + #13#10 + #13#10 +
         'You can skip this page - the wallet address can also be set' + #13#10 +
         'in Wallet & API Settings after the app opens.';
-      Font.Size := 9;
-      Font.Color:= $00006614;
-      Left  := 0;
-      Top   := 154;
-      Width := 460;
-      Height:= 140;
-      AutoSize := False;
-      WordWrap := True;
+      Font.Size  := 9;
+      Font.Color := $00006614;
+      Left       := 0;
+      Top        := 154;
+      Width      := 460;
+      Height     := 140;
+      AutoSize   := False;
+      WordWrap   := True;
     end;
   end;
 end;
 
-// ── Write initial config after install ───────────────────────────────
+// ── Write initial config after install ─────────────────────────────────
 procedure WriteInitialConfig(const FromAddress: string);
 var
   ConfigDir:  string;
@@ -412,19 +404,19 @@ begin
 
   ConfigJson :=
     '{' + #13#10 +
-    '  "api_base_url":   "https://yourdomain.com/api/v1/admin/withdrawals",' + #13#10 +
-    '  "auth_header":    "",' + #13#10 +
-    '  "network":        "polygon_bh",' + #13#10 +
-    '  "rpc_url":        "https://polygon-rpc.com",' + #13#10 +
+    '  "api_base_url": "https://yourdomain.com/api/v1/admin/withdrawals",' + #13#10 +
+    '  "auth_header": "",' + #13#10 +
+    '  "network": "polygon_bh",' + #13#10 +
+    '  "rpc_url": "https://polygon-rpc.com",' + #13#10 +
     '  "token_contract": "0x68a6EA8e9aB0824251061DD122aDA8493e62409d",' + #13#10 +
-    '  "decimals":       18,' + #13#10 +
-    '  "amount_source":  "bh",' + #13#10 +
-    '  "from_address":   "' + FromAddress + '",' + #13#10 +
-    '  "simulate_only":  true,' + #13#10 +
-    '  "pk_set":         false,' + #13#10 +
-    '  "pk_salt":        "",' + #13#10 +
-    '  "pk_token":       "",' + #13#10 +
-    '  "extra_tokens":   []' + #13#10 +
+    '  "decimals": 18,' + #13#10 +
+    '  "amount_source": "bh",' + #13#10 +
+    '  "from_address": "' + FromAddress + '",' + #13#10 +
+    '  "simulate_only": true,' + #13#10 +
+    '  "pk_set": false,' + #13#10 +
+    '  "pk_salt": "",' + #13#10 +
+    '  "pk_token": "",' + #13#10 +
+    '  "extra_tokens": []' + #13#10 +
     '}';
 
   SaveStringToFile(ConfigPath, ConfigJson, False);
@@ -438,7 +430,7 @@ begin
     begin
       Log('Performing update to version {#AppVersion}');
       // If PageWallet doesn't exist (update), use empty string
-      if PageWallet = nil then
+      if not Assigned(PageWallet) then
         WriteInitialConfig('')
       else
         WriteInitialConfig(EdtFromAddr.Text);
@@ -448,15 +440,14 @@ begin
   end;
 end;
 
-// ── Validation on Next ────────────────────────────────────────────────
+// ── Validation on Next ───────────────────────────────────────────────
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
 
-  if (CurPageID = PageWallet.ID) and (not IsUpdate) then
+  if Assigned(PageWallet) and (not IsUpdate) and (CurPageID = PageWallet.ID) then
   begin
-    if (Length(EdtFromAddr.Text) > 0) and
-       (Length(EdtFromAddr.Text) < 42) then
+    if (Length(EdtFromAddr.Text) > 0) and (Length(EdtFromAddr.Text) < 42) then
     begin
       MsgBox(
         'Wallet address looks too short. A valid Ethereum/Polygon address' + #13#10 +
@@ -469,9 +460,8 @@ begin
 end;
 
 // ── Custom Ready Page message ────────────────────────────────────────
-function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, 
-                         MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, 
-                         MemoTasksInfo: String): String;
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
+  MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
   S: String;
 begin
@@ -479,7 +469,8 @@ begin
 
   if IsUpdate then
   begin
-    S := S + 'This will upgrade Infinity Meta Hub from v' + OldVersion + ' to v{#AppVersion}.' + NewLine;
+    S := S + 'This will upgrade Infinity Meta Hub from v' + OldVersion +
+         ' to v{#AppVersion}.' + NewLine;
     S := S + 'Your existing settings and configurations will be preserved.' + NewLine;
     S := S + NewLine;
   end;
@@ -496,12 +487,12 @@ begin
   Result := S;
 end;
 
-// ── Custom message for upgrade ──────────────────────────────────────
+// ── Skip pages during upgrade ────────────────────────────────────────
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
-  
+
   // Skip wallet setup page during updates
-  if (PageID = PageWallet.ID) and IsUpdate then
+  if Assigned(PageWallet) and IsUpdate and (PageID = PageWallet.ID) then
     Result := True;
 end;
